@@ -1,5 +1,6 @@
 # TerminalStockSim-1.0
 Made By Mr.SusBus aka GrandmaVoodo and AI
+
 Stock trader sim for your terminal, with a twist...
 
 Install Guide for Lunix:
