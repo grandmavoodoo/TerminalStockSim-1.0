@@ -10,3 +10,5 @@ Install Guide for Lunix:
 3. Next open the folder you made with the Stock_Sim.py in the terminal.
 4. run the game with "python3 Stock_Sim.py"
 The save file will be saved in the folder that the Stock_Sim.py is in.
+
+Windows Version coming soon...
