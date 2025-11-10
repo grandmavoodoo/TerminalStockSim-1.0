@@ -18,6 +18,7 @@ Windows file convert: beta STILL NEED TESTING
 1. make new folder put bolt convet.py and Stock_Sim.py inside
 2. run "python3 convert.py"
 3. it will make a new windows verison that will work on windows.
-4. do the same for the emoji_convert.py
+4. emoji_convert.py - does not work rn im working on a fix for that...
+   
 
 Windows Version coming soon...
