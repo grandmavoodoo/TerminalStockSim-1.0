@@ -3,6 +3,8 @@ Made By Mr.SusBus aka GrandmaVoodo and AI
 
 Stock trader sim for your terminal, with a twist...
 
+The game is all in one file "Stock_Sim.py"
+
 Install Guide for Lunix:
 1. Make a folder Call it what ever put Stock_Sim.py in that folder.
 2. open terminal and run this command:
