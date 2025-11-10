@@ -17,6 +17,6 @@ The save file will be saved in the folder that the Stock_Sim.py is in.ton
 Windows file convert: beta STILL NEED TESTING
 1. make new folder put bolt convet.py and Stock_Sim.py inside
 2. run "python3 convert.py"
-3. it will make a new window verison that will work on windows.
+3. it will make a new windows verison that will work on windows.
 
 Windows Version coming soon...
