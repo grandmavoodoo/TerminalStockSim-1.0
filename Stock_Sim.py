@@ -988,7 +988,7 @@ def process_cds():
 # --- Save/Load ---
 def save_game():
     """Save all game data to JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
@@ -1044,9 +1044,11 @@ def save_game():
         "crypto_portfolio": crypto_portfolio,
         "crypto_supply": crypto_supply,
         "crypto_history": crypto_history,
+        "dlc_stocks_unlocked": dlc_stocks_unlocked,
+        "purchased_dlcs": purchased_dlcs,
         
     }
-
+    
     try:
         with open(SAVE_FILE, "w") as f:
             json.dump(data, f, indent=4)
@@ -1057,7 +1059,7 @@ def save_game():
 
 def load_game():
     """Load all game data from JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
@@ -1131,6 +1133,19 @@ def load_game():
     crypto_portfolio = data.get("crypto_portfolio", {})
     crypto_supply = data.get("crypto_supply", {})
     crypto_history = data.get("crypto_history", {})
+    
+    # ✅ Safely restore DLC data as lists (old saves used dicts sometimes)
+    loaded_dlcs = data.get("purchased_dlcs", [])
+    loaded_unlocked = data.get("dlc_stocks_unlocked", [])
+
+    if isinstance(loaded_dlcs, dict):
+        loaded_dlcs = list(loaded_dlcs.keys())
+    if isinstance(loaded_unlocked, dict):
+        loaded_unlocked = list(loaded_unlocked.keys())
+
+    purchased_dlcs[:] = loaded_dlcs
+    dlc_stocks_unlocked[:] = loaded_unlocked
+
 
 
 
@@ -1165,6 +1180,7 @@ def load_game():
         "net": 0.0
     }.items():
         vegas_stats[k] = vegas_stats.get(k, v)
+   
 
     print("✅ Game loaded successfully.")
 
