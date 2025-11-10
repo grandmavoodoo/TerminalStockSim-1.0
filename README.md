@@ -17,7 +17,7 @@ The save file will be saved in the folder that the Stock_Sim.py is in.ton
 Install for windows:
    - install python here: https://www.python.org/downloads/
    - python -m pip install cryptography numpy matplotlib colorama
-   - 
+     
 Windows file convert: beta STILL NEED TESTING
 1. make new folder put bolt convet.py and Stock_Sim.py inside
 2. run "python3 convert.py"
