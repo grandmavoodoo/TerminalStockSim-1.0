@@ -18,7 +18,10 @@ Windows file convert: beta STILL NEED TESTING
 1. make new folder put bolt convet.py and Stock_Sim.py inside
 2. run "python3 convert.py"
 3. it will make a new windows verison that will work on windows.
-4. emoji_convert.py - does not work rn im working on a fix for that...
+4. you may need to remove these two lines:
+    - 13:     \"\"\"Return one character (as a Python string) read from console on Windows.\"\"\"
+    -  25:    \"\"\"Attempt to read characters typed within `timeout` seconds. Returns accumulated string.\"\"\"
+6. emoji_convert.py - does not work rn im working on a fix for that...
    
 
 Windows Version coming soon...
