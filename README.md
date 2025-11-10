@@ -10,6 +10,11 @@ Install Guide for Lunix:
    - pip install --upgrade matplotlib numpy cryptography
 3. Next open the folder you made with the Stock_Sim.py in the terminal.
 4. run the game with "python3 Stock_Sim.py"
-The save file will be saved in the folder that the Stock_Sim.py is in.
+The save file will be saved in the folder that the Stock_Sim.py is in.ton
+
+Windows file convert: beta STILL NEED TESTING
+1. make new folder put bolt convet.py and Stock_Sim.py inside
+2. run "python3 convert.py"
+3. it will make a new window verison that will work on windows.
 
 Windows Version coming soon...
