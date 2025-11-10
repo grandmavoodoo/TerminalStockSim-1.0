@@ -988,7 +988,7 @@ def process_cds():
 # --- Save/Load ---
 def save_game():
     """Save all game data to JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
@@ -1046,6 +1046,7 @@ def save_game():
         "crypto_history": crypto_history,
         "dlc_stocks_unlocked": dlc_stocks_unlocked,
         "purchased_dlcs": purchased_dlcs,
+        "black_market_inventory": black_market_inventory,
         
     }
     
@@ -1059,7 +1060,7 @@ def save_game():
 
 def load_game():
     """Load all game data from JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
@@ -1100,6 +1101,9 @@ def load_game():
     try:
         with open(SAVE_FILE, "r") as f:
             data = json.load(f)
+            
+            
+            
     except Exception as e:
         print(f"⚠️ Error loading save file: {e}")
         return
@@ -1112,6 +1116,7 @@ def load_game():
     stocks = data.get("stocks", {})
     insider_predictions = data.get("insider_predictions", {})
     black_market_orders = data.get("black_market_orders", [])
+    black_market_inventory = data.get("black_market_inventory", [])
     heist_inventory = data.get("heist_inventory", {})
     heist_wanted_flags = data.get("heist_wanted_flags", [])
     heist_history = data.get("heist_history", [])
@@ -1145,6 +1150,22 @@ def load_game():
 
     purchased_dlcs[:] = loaded_dlcs
     dlc_stocks_unlocked[:] = loaded_unlocked
+    
+    # ✅ Always ensure dicts/lists for inventories and histories
+    def ensure_dict(value):
+        return value if isinstance(value, dict) else {}
+
+    def ensure_list(value):
+        return value if isinstance(value, list) else []
+
+    insider_predictions = ensure_dict(data.get("insider_predictions", {}))
+    black_market_orders = ensure_list(data.get("black_market_orders", []))
+    black_market_inventory = ensure_dict(data.get("black_market_inventory", {}))
+    heist_inventory = ensure_dict(data.get("heist_inventory", {}))
+    heist_wanted_flags = ensure_list(data.get("heist_wanted_flags", []))
+    heist_history = ensure_list(data.get("heist_history", []))
+    price_history = ensure_dict(data.get("price_history", {}))
+    back_market_history = ensure_list(data.get("black_market_history", []))
 
 
 
