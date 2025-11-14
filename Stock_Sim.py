@@ -991,7 +991,7 @@ def save_game():
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
-    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
     global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats included
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history   # ✅ include Certified Deposits
@@ -1018,6 +1018,8 @@ def save_game():
         "days_passed": days_passed,
         "portfolio": portfolio,
         "stocks": stocks,
+        "stock_supply": stock_supply,
+        "stock_value" : stock_value,
         "insider_predictions": insider_predictions,
         "black_market_orders": black_market_orders,
         "heist_inventory": heist_inventory,
@@ -1063,7 +1065,7 @@ def load_game():
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
-    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
     global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats is properly global
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history  # ✅ include Certified Deposits
@@ -1138,6 +1140,8 @@ def load_game():
     crypto_portfolio = data.get("crypto_portfolio", {})
     crypto_supply = data.get("crypto_supply", {})
     crypto_history = data.get("crypto_history", {})
+    stock_supply = data.get("stock_supply", {})
+    stock_value = data.get("stock_value", {})
     
     # ✅ Safely restore DLC data as lists (old saves used dicts sometimes)
     loaded_dlcs = data.get("purchased_dlcs", [])
