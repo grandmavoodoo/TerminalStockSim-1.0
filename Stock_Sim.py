@@ -1190,30 +1190,18 @@ def process_cds():
 
 # --- Save/Load ---
 def save_game():
-    """Save all game data to JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
+    """Save game data in encrypted JSON format."""
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
-    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
-    global bank_interest_rate, next_interest_day, bank_interest_cost, exp_to_next_level, player_level, player_exp
-    global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats included
-    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history   # ✅ include Certified Deposits
-
-    if "vegas_jackpot" not in globals():
-        vegas_jackpot = 25000.0  # ensure default if missing
-    if "vegas_stats" not in globals() or not isinstance(vegas_stats, dict):
-        vegas_stats = {
-            "slots_played": 0,
-            "blackjack_wins": 0,
-            "blackjack_losses": 0,
-            "roulette_bets": 0,
-            "jackpots_won": 0,
-            "games_played": 0,
-            "total_bets": 0.0,
-            "total_won": 0.0,
-            "total_lost": 0.0,
-            "net": 0.0
-        }
+    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global stock_value, stock_supply
+    global bank_interest_rate, next_interest_day, bank_interest_cost
+    global exp_to_next_level, player_level, player_exp
+    global vegas_jackpot, vegas_stats
+    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history
 
     data = {
         "balance": balance,
@@ -1228,7 +1216,7 @@ def save_game():
         "heist_wanted_flags": heist_wanted_flags,
         "heist_history": heist_history,
         "player_has_fake_id": player_has_fake_id,
-        "insider_info_cost": insider_info_cost if "insider_info_cost" in globals() else 10000,
+        "insider_info_cost": insider_info_cost,
         "price_history": price_history,
         "black_market_history": black_market_history,
         "FAKE_ID_COST": FAKE_ID_COST,
@@ -1237,10 +1225,10 @@ def save_game():
         "bank_interest_rate": bank_interest_rate,
         "bank_interest_cost": bank_interest_cost,
         "next_interest_day": next_interest_day,
-        "vegas_jackpot": vegas_jackpot,  # ✅ Jackpot saved here
-        "vegas_stats": vegas_stats,      # ✅ Stats saved too
-        "active_cds": active_cds,        # ✅ Save active CDs
-        "cd_history": cd_history,        # ✅ Save CD history
+        "vegas_jackpot": vegas_jackpot,
+        "vegas_stats": vegas_stats,
+        "active_cds": active_cds,
+        "cd_history": cd_history,
         "cd_cooldown_until": cd_cooldown_until,
         "cds_opened_since_cooldown": cds_opened_since_cooldown,
         "trade_history": trade_history,
@@ -1250,14 +1238,11 @@ def save_game():
         "crypto_history": crypto_history,
         "dlc_stocks_unlocked": dlc_stocks_unlocked,
         "purchased_dlcs": purchased_dlcs,
-        "black_market_inventory": black_market_inventory,
         "player_exp": player_exp,
         "player_level": player_level,
-        "exp_to_next_level": exp_to_next_level,
-
-        
+        "exp_to_next_level": exp_to_next_level
     }
-    
+
     try:
         json_str = json.dumps(data)
         encrypted = encrypt_data(json_str)
@@ -1272,19 +1257,24 @@ def save_game():
 
 
 def load_game():
-    """Load all game data from JSON file (including Vegas jackpot, stats, and CDs)."""
-    global balance, bank_balance, days_passed, portfolio, stocks, trade_history, dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
+    """Load all game data from encrypted JSON save file."""
+    global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
-    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
-    global bank_interest_rate, next_interest_day, bank_interest_cost, exp_to_next_level, player_level, player_exp
-    global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats is properly global
-    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history  # ✅ include Certified Deposits
-    
+    global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global stock_value, stock_supply
+    global bank_interest_rate, next_interest_day, bank_interest_cost
+    global exp_to_next_level, player_level, player_exp
+    global vegas_jackpot, vegas_stats
+    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history
+
     if not os.path.exists(SAVE_FILE):
         print("📄 No encrypted save file found. Starting a new game.")
         return
 
+    # ----------- DECRYPT SAVE FILE -----------
     try:
         with open(SAVE_FILE, "rb") as f:
             encrypted = f.read()
@@ -1293,59 +1283,20 @@ def load_game():
         data = json.loads(decrypted_json)
 
     except Exception as e:
-        print("❌ Save file is corrupted or wrong password.")
+        print("❌ Save file is corrupted or cannot be decrypted.")
         print(f"Error: {e}")
         return
-    
-    if not os.path.exists(SAVE_FILE):
-        print("📄 No save file found. Starting a new game.")
-        balance = 5000.0
-        bank_balance = 0.0
-        bank_interest_rate = 0.0
-        bank_interest_cost = 10000.0
-        next_interest_day = 7
-        portfolio, stocks, insider_predictions = {}, {}, {}
-        black_market_orders, heist_inventory, heist_wanted_flags = [], {}, []
-        heist_history, price_history, black_market_history = [], {}, []
-        player_has_fake_id = False
-        FAKE_ID_COST = 15000.0
-        fake_id_locked_until = 0
-        last_fast_forward_day = None
-        vegas_jackpot = 25000.0
-        vegas_stats = {  # ✅ initialize vegas_stats for new game
-            "slots_played": 0,
-            "blackjack_wins": 0,
-            "blackjack_losses": 0,
-            "roulette_bets": 0,
-            "jackpots_won": 0,
-            "games_played": 0,
-            "total_bets": 0.0,
-            "total_won": 0.0,
-            "total_lost": 0.0,
-            "net": 0.0
-        }
-        active_cds, cd_history = [], []  # ✅ initialize new CD lists
-        return
 
-    try:
-        with open(SAVE_FILE, "r") as f:
-            data = json.load(f)
-            
-            
-            
-    except Exception as e:
-        print(f"⚠️ Error loading save file: {e}")
-        return
-
-    # Restore core stats
+    # ----------- RESTORE VALUES -----------
     balance = data.get("balance", 5000.0)
     bank_balance = data.get("bank_balance", 0.0)
     days_passed = data.get("days_passed", 0)
     portfolio = data.get("portfolio", {})
     stocks = data.get("stocks", {})
+    stock_supply = data.get("stock_supply", {})
     insider_predictions = data.get("insider_predictions", {})
     black_market_orders = data.get("black_market_orders", [])
-    black_market_inventory = data.get("black_market_inventory", [])
+    black_market_inventory = data.get("black_market_inventory", {})
     heist_inventory = data.get("heist_inventory", {})
     heist_wanted_flags = data.get("heist_wanted_flags", [])
     heist_history = data.get("heist_history", [])
@@ -1360,82 +1311,29 @@ def load_game():
     bank_interest_cost = data.get("bank_interest_cost", 10000.0)
     next_interest_day = data.get("next_interest_day", 7)
     vegas_jackpot = data.get("vegas_jackpot", 25000.0)
-    cd_cooldown_until = data.get("cd_cooldown_until", 0)
-    cds_opened_since_cooldown = data.get("cds_opened_since_cooldown", 0)
+    vegas_stats = data.get("vegas_stats", {})
     trade_history = data.get("trade_history", [])
+
+    # Crypto systems
     cryptos = data.get("cryptos", {})
     crypto_portfolio = data.get("crypto_portfolio", {})
     crypto_supply = data.get("crypto_supply", {})
     crypto_history = data.get("crypto_history", {})
-    stock_supply = data.get("stock_supply", {})
-    stock_value = data.get("stock_value", {})
+
+    # Player XP / Level
     player_exp = data.get("player_exp", 0)
-    player_level = data.get("player_level", 0)
+    player_level = data.get("player_level", 1)
     exp_to_next_level = data.get("exp_to_next_level", 150)
 
-    # ✅ Safely restore DLC data as lists (old saves used dicts sometimes)
-    loaded_dlcs = data.get("purchased_dlcs", [])
-    loaded_unlocked = data.get("dlc_stocks_unlocked", [])
+    # DLCs
+    purchased_dlcs[:] = data.get("purchased_dlcs", [])
+    dlc_stocks_unlocked[:] = data.get("dlc_stocks_unlocked", [])
 
-    if isinstance(loaded_dlcs, dict):
-        loaded_dlcs = list(loaded_dlcs.keys())
-    if isinstance(loaded_unlocked, dict):
-        loaded_unlocked = list(loaded_unlocked.keys())
-
-    purchased_dlcs[:] = loaded_dlcs
-    dlc_stocks_unlocked[:] = loaded_unlocked
-    
-    # ✅ Always ensure dicts/lists for inventories and histories
-    def ensure_dict(value):
-        return value if isinstance(value, dict) else {}
-
-    def ensure_list(value):
-        return value if isinstance(value, list) else []
-
-    insider_predictions = ensure_dict(data.get("insider_predictions", {}))
-    black_market_orders = ensure_list(data.get("black_market_orders", []))
-    black_market_inventory = ensure_dict(data.get("black_market_inventory", {}))
-    heist_inventory = ensure_dict(data.get("heist_inventory", {}))
-    heist_wanted_flags = ensure_list(data.get("heist_wanted_flags", []))
-    heist_history = ensure_list(data.get("heist_history", []))
-    price_history = ensure_dict(data.get("price_history", {}))
-    back_market_history = ensure_list(data.get("black_market_history", []))
-
-
-
-
-    # ✅ Load Certified Deposit data
+    # CDs
     active_cds = data.get("active_cds", [])
     cd_history = data.get("cd_history", [])
-
-    # ✅ Cleanup corrupted or legacy CD entries
-    active_cds = [cd for cd in active_cds if isinstance(cd, dict) and "amount" in cd]
-    cd_history = [h for h in cd_history if isinstance(h, dict) and "amount" in h]
-
-    # ✅ Restore Vegas stats properly with fallback
-    vegas_stats = data.get("vegas_stats", {
-        "slots_played": 0,
-        "blackjack_wins": 0,
-        "blackjack_losses": 0,
-        "roulette_bets": 0,
-        "jackpots_won": 0,
-        "games_played": 0,
-        "total_bets": 0.0,
-        "total_won": 0.0,
-        "total_lost": 0.0,
-        "net": 0.0
-    })
-
-    # Ensure all numeric values exist even if older saves are missing them
-    for k, v in {
-        "games_played": 0,
-        "total_bets": 0.0,
-        "total_won": 0.0,
-        "total_lost": 0.0,
-        "net": 0.0
-    }.items():
-        vegas_stats[k] = vegas_stats.get(k, v)
-   
+    cd_cooldown_until = data.get("cd_cooldown_until", 0)
+    cds_opened_since_cooldown = data.get("cds_opened_since_cooldown", 0)
 
     print("✅ Game loaded successfully.")
 
@@ -1673,9 +1571,7 @@ def choose_game_mode():
     print("                  - Cheaper stock prices, cheaper interest upgrades.")
     print("2) ⚪ Normal Mode - The standard stock market experience.")
     print("3) 🔴 Hard Mode   - Start with only $1500 and tougher conditions.")
-    print("\n=== 🎰 7 Casino Games in Vegas 🎰 ===")
-    print("\n=== 🎮 Two Hidden Menus... One Gameplay Enhancement... And Two Hidden Gamemodes 🎮 ===")
-    print("HINT: One option is for knowledge, the two gamemodes are HIGHLY ILLEGAL and can be found at the same place.")
+    print("\n=== 🎰 7 Casino Games in Vegas & More 🎰 ===")
     print()
     print("\nVer: 1.1.0")
 
