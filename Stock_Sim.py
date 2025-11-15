@@ -493,26 +493,76 @@ def choose_save_slot():
     global CURRENT_SLOT, SAVE_FILE
 
     print("\n🎮 Select Save Slot:")
-    for i, slot in enumerate(SAVE_SLOTS, 1):
-        exists = "✔ USED" if os.path.exists(slot) else "✖ EMPTY"
-        print(f"{i}. Slot {i} — {exists}")
 
-    # Player chooses slot
+    for i, slot in enumerate(SAVE_SLOTS, 1):
+        if os.path.exists(slot):
+            meta = read_save_metadata(slot)
+
+            if meta:
+                lvl = meta.get("player_level", 0)
+                money = f"{meta.get('balance', 0):,}"
+                day = meta.get("day", 0)
+                mode = meta.get("mode", "Unknown")
+
+                print(f"{i}. Slot {i} — ✔ USED")
+                print(f"   ➤ Level: {lvl}")
+                print(f"   ➤ Money: ${money}")
+                print(f"   ➤ Day: {day}")
+                print(f"   ➤ Mode: {mode}")
+            else:
+                print(f"{i}. Slot {i} — ⚠ CORRUPTED SAVE")
+        else:
+            print(f"{i}. Slot {i} — ✖ EMPTY")
+
+    # Player selects slot
     while True:
-        choice = input("Choose slot (1-4): ").strip()
-        if choice in ["1", "2", "3","4"]:
+        choice = input("Choose slot (1-3): ").strip()
+        if choice in ["1", "2", "3"]:
             CURRENT_SLOT = int(choice) - 1
             SAVE_FILE = SAVE_SLOTS[CURRENT_SLOT]
             break
-        print("Invalid choice. Select slot 1, 2, 3 or 4.")
+        print("Invalid choice. Select slot 1, 2, or 3.")
 
- # --- After selecting slot, decide what to do ---
+    # Load existing save or start new game
     if os.path.exists(SAVE_FILE):
         print(f"\n📁 Loading Save Slot {CURRENT_SLOT+1}...\n")
-        load_game()   # Load encrypted save
+        load_game()
     else:
         print(f"\n📄 Slot {CURRENT_SLOT+1} is empty — starting NEW GAME!\n")
-        new_game()     # <<< RESET EVERYTHING PROPERLY
+        new_game()
+
+def read_save_metadata(path):
+    """Return (player_level, balance, day, mode) from an encrypted save file, or None if corrupted."""
+    if not os.path.exists(path):
+        return None  # no save file exists
+
+    try:
+        # Read encrypted bytes
+        with open(path, "rb") as f:
+            encrypted = f.read()
+
+        # Decrypt
+        decrypted_json = decrypt_data(encrypted)
+
+        # Parse JSON
+        data = json.loads(decrypted_json)
+
+        # Extract metadata safely
+        level = data.get("player_level", 0)
+        balance = data.get("balance", 0.0)
+        day = data.get("days_passed", 0)
+        mode = data.get("mode", "Unknown")
+
+        return {
+            "level": level,
+            "balance": balance,
+            "day": day,
+            "mode": mode
+        }
+
+    except Exception as e:
+        # If ANYTHING fails (decryption, json parsing, missing fields), treat as corrupted
+        return None
 
 
 
@@ -1253,7 +1303,7 @@ def save_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode
 
     data = {
         "balance": balance,
@@ -1292,7 +1342,8 @@ def save_game():
         "purchased_dlcs": purchased_dlcs,
         "player_exp": player_exp,
         "player_level": player_level,
-        "exp_to_next_level": exp_to_next_level
+        "exp_to_next_level": exp_to_next_level,
+        "mode": mode
     }
 
     try:
@@ -1323,7 +1374,7 @@ def load_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode
 
     if SAVE_FILE is None or not os.path.exists(SAVE_FILE):
         print("📄 No save found in this slot. Starting new game.")
@@ -1380,6 +1431,7 @@ def load_game():
     player_exp = data.get("player_exp", 0)
     player_level = data.get("player_level", 1)
     exp_to_next_level = data.get("exp_to_next_level", 150)
+    mode = data.get("mode", [])
 
     # DLCs
     purchased_dlcs[:] = data.get("purchased_dlcs", [])
@@ -5002,7 +5054,7 @@ def main():
             print("CD menus is not lock until LvL 5, Black market LvL 10, crypto menu LvL 15.")
             print("LvL 3 you get 5 random stocks added, LvL 5 10, LvL 10 15, LvL 15 20, LvL 25 & 50 25, and 100 you get 50 new stocks.")
             print("add back save file file encryption, and hard mode staring exp for lvl one 200 ")
-            print("\nUpated 1.1.5")
+            print("\nUpated 1.1.3")
             print("\nAdded:")
             print("new load game CMD, support for 4 save game files, do [LOAD GAME] to get to load game menu to select game file.")
         else:
