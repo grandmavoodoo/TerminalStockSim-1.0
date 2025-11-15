@@ -19,6 +19,16 @@ import sys, time, random, tty, termios, select
 
 SAVE_FILE = "stock_save.json"
 
+SAVE_SLOTS = [
+    "save_slot_1.dat",
+    "save_slot_2.dat",
+    "save_slot_3.dat",
+    "save_slot_4.dat"
+]
+
+CURRENT_SLOT = None  # Tracks which slot is active
+
+
 # =========================
 # 🔐 Encryption System
 # =========================
@@ -478,6 +488,35 @@ def show_trade_history():
     print("=========================")
 
 # --- Core ---
+
+def choose_save_slot():
+    global CURRENT_SLOT, SAVE_FILE
+
+    print("\n🎮 Select Save Slot:")
+    for i, slot in enumerate(SAVE_SLOTS, 1):
+        exists = "✔ USED" if os.path.exists(slot) else "✖ EMPTY"
+        print(f"{i}. Slot {i} — {exists}")
+
+    # Player chooses slot
+    while True:
+        choice = input("Choose slot (1-4): ").strip()
+        if choice in ["1", "2", "3","4"]:
+            CURRENT_SLOT = int(choice) - 1
+            SAVE_FILE = SAVE_SLOTS[CURRENT_SLOT]
+            break
+        print("Invalid choice. Select slot 1, 2, 3 or 4.")
+
+ # --- After selecting slot, decide what to do ---
+    if os.path.exists(SAVE_FILE):
+        print(f"\n📁 Loading Save Slot {CURRENT_SLOT+1}...\n")
+        load_game()   # Load encrypted save
+    else:
+        print(f"\n📄 Slot {CURRENT_SLOT+1} is empty — starting NEW GAME!\n")
+        new_game()     # <<< RESET EVERYTHING PROPERLY
+
+
+
+
 def log_trade(action, stock, qty, price, result=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{timestamp}] {action.upper()} {qty:.3f}x {stock} @ ${price:.2f}"
@@ -1263,7 +1302,10 @@ def save_game():
         with open(SAVE_FILE, "wb") as f:
             f.write(encrypted)
 
-        print("🔐 Encrypted game saved successfully.")
+        slot_num = CURRENT_SLOT + 1 if CURRENT_SLOT is not None else "?"
+        print(f"🔐 Game saved to Slot {slot_num} successfully!")
+
+
 
     except Exception as e:
         print(f"⚠️ Error saving game: {e}")
@@ -1283,9 +1325,10 @@ def load_game():
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
     global cryptos, crypto_portfolio, crypto_supply, crypto_history
 
-    if not os.path.exists(SAVE_FILE):
-        print("📄 No encrypted save file found. Starting a new game.")
+    if SAVE_FILE is None or not os.path.exists(SAVE_FILE):
+        print("📄 No save found in this slot. Starting new game.")
         return
+
 
     # ----------- DECRYPT SAVE FILE -----------
     try:
@@ -1586,7 +1629,7 @@ def choose_game_mode():
     print("3) 🔴 Hard Mode   - Start with only $1500 and tougher conditions.")
     print("\n=== 🎰 7 Casino Games in Vegas & More 🎰 ===")
     print()
-    print("\nVer: 1.1.0")
+    print("\nVer: 1.1.3")
 
     while True:
         choice = input("\nSelect mode (1=Easy, 2=Normal, 3=Hard): ").strip()
@@ -1716,6 +1759,11 @@ def new_game():
         player_exp = 0
         player_level = 0
         exp_to_next_level = 150
+   
+    if os.path.exists(SAVE_FILE):
+        os.remove(SAVE_FILE)
+
+
 
 
 
@@ -4840,23 +4888,23 @@ def auto_save_if_needed():
 def main():
     global current_page, play_mode
     print("Welcome to Terminal Stock Simulator! Created by Mr.SusBus And AI")
-    print("\nVer: 1.1.0")
+    print("\nVer: 1.1.3")
     if not os.path.exists(SAVE_FILE):
         # No save: ensure stocks exist then choose mode
-        choose_game_mode()
+        choose_save_slot()
     else:
         if input("Load save? (y/n): ").lower() == "y":
             load_game()
         else:
             # if user opts not to load, offer fresh mode choose
-            choose_game_mode()
+            choose_save_slot()
 
     while True:
         if not play_mode:
             print_stocks(current_page)
             print_portfolio()
         print("\n[B] Buy | [S] Sell | [Sh] Short | [C] Cover | [Show All] [SEARCH] | [F] Fast Forward | [G] Graph | [H] History ")
-        print("[Bank] | [DLC] | [Vegas] | [Play] | [N] Next | [P] Prev | [Save] | [Q] Quit | [NEW GAME] | [CMDS] list all CMDs")
+        print("[Bank] | [DLC] | [Vegas] | [Play] | [N] Next | [P] Prev | [Save] | [Q] Quit | [NEW/LOAD GAME] | [CMDS] All CMDs")
         ch = input("Choose: ").lower().strip()
         if ch == "b": buy_stock()
         elif ch == "s": sell_stock()
@@ -4873,6 +4921,7 @@ def main():
         elif ch == "crypto": crypto_menu()
         elif ch == "insider": buy_insider_info()
         elif ch == "admin": admin_menu()
+        elif ch == "load game": choose_save_slot()
         elif ch == "new stocks": show_all()  # left as-is
         elif ch == "show all": show_all()
         #elif ch == "drill game": _play_drill_minigame()
@@ -4930,7 +4979,7 @@ def main():
             print("BANK) bank menu, CD) Certified Deposit menu, D) deposit money, W) withdraw money, U) upgrade bank interest")
             print("\nExtra:")
             print("INSIDER) get insider info on a stock, BLACK MARKET) black market menu, CRYPTO) cryptocurrency menu")
-            print("UPDATES) show update log, ADMIN) admin menu - password [sus] ")
+            print("UPDATES) show update log, ADMIN) admin menu - password [sus], LOAD GAME) game save menu ")
         elif ch == "updates": 
             print("======Update Change Long======")
             print("\nUpated 1.0.2")
@@ -4953,6 +5002,9 @@ def main():
             print("CD menus is not lock until LvL 5, Black market LvL 10, crypto menu LvL 15.")
             print("LvL 3 you get 5 random stocks added, LvL 5 10, LvL 10 15, LvL 15 20, LvL 25 & 50 25, and 100 you get 50 new stocks.")
             print("add back save file file encryption, and hard mode staring exp for lvl one 200 ")
+            print("\nUpated 1.1.5")
+            print("\nAdded:")
+            print("new load game CMD, support for 4 save game files, do [LOAD GAME] to get to load game menu to select game file.")
         else:
             print("Invalid option.")
         
