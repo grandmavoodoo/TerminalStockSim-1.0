@@ -82,7 +82,20 @@ dlc_packs = {
     "Luxury Legends DLC": {"stocks": ["PRADA", "ROLEX", "TESORO", "DIORX", "MCLRN"], "price": 69000.99},
     "AI Uprising DLC": {"stocks": ["SYNTHIX", "QUANTIA", "NEURONIX", "BOTCORP", "CYNET"], "price": 77777.77},
     "Sus Bus DLC": {"stocks": ["DASUSBUS", "MORESUS", "XSdUSX", "2045", "SUSCOIN","MOREBUS","BIGSUS","LILSUS","MEGASUS","SMALLSUS"], "price": 42069.99},
-    "MEME DLC": {"stocks": ["OVR9000", "80085", "AMUNGUS", "TRUMPCOIN", "PEPE","DOGECOIN","FARTCOIN","GIGACHAD","TOTHEMOON","AVOCADO"], "price": 123456.78}
+    "MEME DLC": {"stocks": ["OVR9000", "80085", "AMUNGUS", "TRUMPCOIN", "PEPE","DOGECOIN","FARTCOIN","GIGACHAD","TOTHEMOON","AVOCADO"], "price": 123456.78},
+    "Quantum Finance DLC": {"stocks": ["QBITX", "ENTANGLO", "PHASECORE", "QUARKSYS", "GRAVITEX"], "price": 42000.42},
+    "Industrial Overdrive DLC": {"stocks": ["MECHTEK", "FURNACECO", "IRONCOREX", "STEELWORKS", "DRILLMAX"], "price": 30000.75},
+    "Galactic Frontier DLC": {"stocks": ["STELLARX", "NEBULON", "ASTROMINE", "COSMOCORE", "WARPDRIVE"], "price": 55555.55},
+    "Food Frenzy DLC": {"stocks": ["BURGRX", "MEGAFRY", "PIZZAPRO", "TACOCORP", "ICECREAMZ"], "price": 16999.69},
+    "Corporate Chaos DLC": {"stocks": ["LOBBYX", "SHADYCO", "MEGAMERGE", "TAXHAVEN", "OFFSHORX"], "price": 88888.88},
+    "Retro Gamer Legends DLC": {"stocks": ["ARCADIA", "PIXELFORCE", "RETROSOFT", "BLIPCO", "NEONBYTE"], "price": 49999.99},
+    "Dank Bank DLC": {"stocks": ["LOLCASH","BR0KE","MONEYSUS","RUGPULL","CASHM8","BANKRUPT","EZLOAN","FASTCASH","MONEYLOL","STONKZ","DEBTX","OVERDRAFT","BIGWALLET","FRAUDCO","CASHLORD"], "price": 42069.69},
+    "Fat Cat DLC": {"stocks": ["CATCEO","PAWZ","FATCATX","PURRR","CLAWCO","MEOWINC","KITTYBANK","WHISKERX","SCRATCHY","HUNGRYCAT","BIGPURR","CHONK","MILKMINER","NIGHTCAT","CATSTACK"], "price": 39999.95},
+    "Snack Attack DLC": {"stocks": ["CHIPZ","BURNTFRY","SLURPO","NACHOX","POPCRN","TATERZ","WINGZ","MOZZY","TASTYCO","CHONKSODA","HOTSAUCX","BIGGULP","SPICYBOI","CRUNCHX","BLOATED"], "price": 28999.69},
+    "Scuffed Bots DLC": {"stocks": ["BOTFAIL","GLITCHX","AISCAM","ROBOTDUMB","404AI","BOOTLEGAI","SMARTISH","BEEPBORK","BUGOS","OVERHEAT","FRIEDCPU","BYTEBORK","BROKENCODE","SCAMWARE","HAL9001"], "price": 77777.00},
+    "Dollar Store DLC": {"stocks": ["CHEEP","DISCOUNTX","OFFBRAND","SAVEMORE","ALMOSTGOOD","DOLLABUY","CLOSEENOUGH","KNOCKOFF","VALUEZ","CHEAPAF","PRICEDOWN","STILLWORKS","BUDGETCO","GOODNUFF","EZBUY"], "price": 15999.11},
+
+
 }
 
 purchased_dlcs = []
