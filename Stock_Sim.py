@@ -565,6 +565,12 @@ def read_save_metadata(path):
         return None
 
 
+def activate_cheater_mode():
+    global mode
+    mode = "CHEATER"
+    print("⚠️ CHEATER MODE ACTIVATED! Your save file will show CHEATER mode.")
+    save_game()   # Make the change permanent
+
 
 
 def log_trade(action, stock, qty, price, result=None):
@@ -4755,6 +4761,7 @@ def admin_menu():
         return
 
     print("\n✅ Access granted. Welcome, Admin.")
+    activate_cheater_mode()
 
     while True:
         print("\n=== 🧰 ADMIN MENU ===")
