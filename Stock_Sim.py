@@ -516,12 +516,12 @@ def choose_save_slot():
 
     # Player selects slot
     while True:
-        choice = input("Choose slot (1-3): ").strip()
-        if choice in ["1", "2", "3"]:
+        choice = input("Choose slot (1-4): ").strip()
+        if choice in ["1", "2", "3", "4"]:
             CURRENT_SLOT = int(choice) - 1
             SAVE_FILE = SAVE_SLOTS[CURRENT_SLOT]
             break
-        print("Invalid choice. Select slot 1, 2, or 3.")
+        print("Invalid choice. Select slot 1, 2, 3 or 4.")
 
     # Load existing save or start new game
     if os.path.exists(SAVE_FILE):
