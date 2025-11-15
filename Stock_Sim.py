@@ -1699,6 +1699,8 @@ def new_game():
     crypto_supply.clear()
     crypto_history.clear()
     exp_to_next_level = 150
+    player_exp = 0
+    player_level = 0
 
 
 
@@ -4942,3 +4944,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
