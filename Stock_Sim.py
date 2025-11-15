@@ -62,14 +62,13 @@ FAST_FORWARD_COOLDOWN_DAYS = 7
 last_fast_forward_day = None     
 FAKE_ID_LOCK_DAYS = 95
 fake_id_locked_until = 0
-vegas_jackpot = 25000.0  # base jackpot value
+vegas_jackpot = 25000.0  
 NEW_GAME_FLAG = False
-
-
-# --- NEW: per-stock supply mapping ---
-stock_supply = {}  # mapping stock -> total available supply (int)
-
-# --- GBM Parameters ---
+# --- EXP / Level System ---
+player_exp = 0
+player_level = 0
+exp_to_next_level = 150  # Level 0 → 1 requires 150 EXP
+stock_supply = {} 
 DAILY_DRIFT = 0.0005
 DAILY_VOLATILITY = 0.02
 
@@ -206,6 +205,56 @@ heist_wanted_flags = []  # list of dicts: { "type": "bank"|"hacking", "days_left
 heist_history = []     # record of completed/failed heists
 HEIST_WANTED_DAYS = 60
 HEIST_CATCH_PROB_TOTAL = 0.30  # 30% chance across the window
+
+
+# --- AUTO-UNLOCK NEW STOCKS ON LEVEL UPS ---
+LEVEL_STOCK_UNLOCKS = {
+    3: 5,
+    5: 10,
+    10: 15,
+    15: 20,
+    25: 25,
+    50: 25,
+    100: 50
+}
+
+UNLOCKED_LEVELS = set()   # prevents duplicate unlocking
+
+
+def unlock_level_stocks(level):
+    """Unlock NEW randomly generated stocks when the player hits certain levels."""
+    global stocks, stock_supply, price_history
+
+    if level not in LEVEL_STOCK_UNLOCKS:
+        return
+
+    if level in UNLOCKED_LEVELS:
+        return  # already unlocked for this save
+
+    UNLOCKED_LEVELS.add(level)
+
+    num_new = LEVEL_STOCK_UNLOCKS[level]
+
+    # Generate stock names that don’t exist yet
+    def generate_unique_stock_name():
+        while True:
+            name = "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(4))
+            if name not in stocks:
+                return name
+
+    print(f"\n🚀 NEW MARKET UNLOCK! You reached LEVEL {level}!")
+    print(f"📈 {num_new} brand-new stocks have entered the market!\n")
+
+    for _ in range(num_new):
+        name = generate_unique_stock_name()
+        price = round(random.uniform(5, 800), 2)
+
+        stocks[name] = price
+        stock_supply[name] = random.randint(50000, 2000000)
+        price_history[name] = generate_stock_history(price, days=random.randint(40, 120))
+
+    save_game()
+
 
 
 def generate_stock_history(current_price, days=60):
@@ -381,7 +430,7 @@ def show_all():
     print("------------------------------------------------------------------")
 
 def print_portfolio():
-    print("\n=== 💼 Portfolio 💼 ===")
+    print(f"\n=== 💼 Portfolio 💼 === Level: {player_level} | EXP: {player_exp:.0f} / {exp_to_next_level} ===")
     print(f" 🗓️  Day: {days_passed}")
     total_value = balance + bank_balance
     if not portfolio:
@@ -404,7 +453,7 @@ def print_portfolio():
     print(f"🏛️  Bank: {format_money(bank_balance)}")
     print(f"📈 Bank Interest: {bank_interest_rate*100:.3f}% | Upgrade Cost: ${bank_interest_cost:.2f}")
     print(f"💲 Total Value: {format_money(total_value)}")
-    print("=========================")
+    print("==================================================")
 
 def show_trade_history():
     print("\n=== Trade History (last 100 trades) ===")
@@ -573,6 +622,41 @@ def show_market_graph():
         play_mode = was_playing
 
 # --- Trading ---
+
+def add_exp(amount):
+    """Add EXP and handle level-ups. amount may be float."""
+    global player_exp, player_level, exp_to_next_level
+    try:
+        amount = float(amount)
+    except Exception:
+        return
+    if amount <= 0:
+        return
+    player_exp += amount
+    print(f"✨ Gained {amount:.0f} EXP")
+    # Level up loop (support multi-level at once)
+    leveled = False
+    while player_exp >= exp_to_next_level:
+        player_exp -= exp_to_next_level
+        player_level += 1
+        leveled = True
+        print(f"\n🎉 LEVEL UP! You are now LEVEL {player_level}!\n")
+        
+        unlock_level_stocks(player_level)
+        
+        # next level requires +15%
+        exp_to_next_level = int(exp_to_next_level * 1.15)
+    if leveled:
+        # show new progress
+        print(f"Progress: {player_exp:.0f} / {exp_to_next_level} EXP")
+    # auto-save to persist progress if save_game exists
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
+
 def buy_stock():
     global balance
     stock = input("Enter stock name to buy: ").upper()
@@ -612,7 +696,7 @@ def buy_stock():
     log_trade("BUY", stock, qty, stocks[stock])
 
 def sell_stock():
-    global balance
+    global balance, portfolio, stocks, current_page
     if not portfolio:
         print("You don’t own any stocks.")
         return
@@ -639,41 +723,96 @@ def sell_stock():
             print("Not enough shares.")
             return
 
-    avg_price = portfolio[stock]["avg_price"]
-    gain_loss = qty * (stocks[stock] - avg_price)  # profit/loss
-    balance += qty * stocks[stock]
+    # Safely read avg price and current price
+    avg_price = float(portfolio[stock].get("avg_price", 0.0))
+    current_price = float(stocks.get(stock, 0.0))
+
+    # Compute profit/loss BEFORE awarding EXP
+    gain_loss = qty * (current_price - avg_price)  # profit (can be negative)
+    profit = gain_loss  # explicit name for clarity
+
+    # Transfer cash to player
+    balance += qty * current_price
+
+    # Update portfolio
     portfolio[stock]["qty"] -= qty
     if portfolio[stock]["qty"] <= 0:
         del portfolio[stock]
 
-    print(f"Sold {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
-    log_trade("SELL", stock, qty, stocks[stock], result=f"P/L ${gain_loss:.2f}")
+    # Award EXP if profit > 0
+    if profit > 0:
+        exp_gain = profit * 0.15
+        add_exp(exp_gain)
 
-    # --- Refresh display after selling ---
-    print_stocks(current_page)
+    print(f"Sold {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
+    if 'log_trade' in globals():
+        try:
+            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
+        except Exception:
+            # fallback: basic trade log append if structure exists
+            try:
+                trade_history.append({"type": "SELL", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${gain_loss:.2f}"})
+            except Exception:
+                pass
+
+    # Refresh UI
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
     print_portfolio()
+    # auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def sell_all():
-    global balance
+    global balance, portfolio, stocks, current_page
     if not portfolio:
         print("You don’t own any stocks.")
         return
     total_proceeds = 0
+    total_profit = 0
     for stock, data in list(portfolio.items()):
         qty = data["qty"]
-        avg_price = data["avg_price"]
-        gain_loss = qty * (stocks[stock] - avg_price)
-        proceeds = qty * stocks[stock]
+        avg_price = float(data.get("avg_price", 0.0))
+        current_price = float(stocks.get(stock, 0.0))
+        gain_loss = qty * (current_price - avg_price)  # profit or loss
+        proceeds = qty * current_price
+        # Add cash
         balance += proceeds
         total_proceeds += proceeds
-        log_trade("SELL", stock, qty, stocks[stock], result=f"P/L ${gain_loss:.2f}")
+        total_profit += gain_loss
+        # Award EXP for profits only
+        if gain_loss > 0:
+            exp_gain = gain_loss * 0.15
+            add_exp(exp_gain)
+        # Log trade
+        try:
+            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
+        except Exception:
+            pass
         print(f"Sold all {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
         del portfolio[stock]
-    print(f"\n💰 Sold all holdings | Total proceeds: ${total_proceeds:.2f}")
 
-    # Refresh display
-    print_stocks(current_page)
+    print(f"\n💰 Sold all holdings | Total proceeds: ${total_proceeds:.2f}")
+    print(f"✨ Total Profit: ${total_profit:.2f} | EXP gained automatically if profitable trades")
+    # UI refresh
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
     print_portfolio()
+    # Auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def short_stock():
     global balance
@@ -697,25 +836,55 @@ def short_stock():
         shorts[stock] = {"shares": qty, "sell_price": stocks[stock]}
     print(f"Shorted {qty:.3f} {stock} using ${cost_to_short:.2f} margin.")
     log_trade("SHORT", stock, qty, stocks[stock])
+    print_stocks(current_page)
+    print_portfolio()
 
 def cover_all():
-    global balance
+    global balance, shorts, stocks, current_page
     if not shorts:
         print("No short positions to cover.")
         return
     total_pl = 0
+    total_exp = 0
     for stock, data in list(shorts.items()):
         qty = data["shares"]
-        profit = (data["sell_price"] - stocks[stock]) * qty
-        balance += profit + (data["sell_price"] * qty)
+        sell_price = float(data.get("sell_price", 0.0))
+        current_price = float(stocks.get(stock, 0.0))
+        profit = (sell_price - current_price) * qty
         total_pl += profit
-        log_trade("COVER", stock, qty, stocks[stock], result=f"P/L ${profit:.2f}")
+        # Award EXP for profits only
+        if profit > 0:
+            exp_gain = profit * 0.15
+            total_exp += exp_gain
+            add_exp(exp_gain)
+        # Settle the short
+        balance += profit + (sell_price * qty)
+        # Log trade
+        try:
+            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
+        except Exception:
+            pass
         print(f"Covered all {qty:.3f} of {stock}, P/L: ${profit:.2f}")
         del shorts[stock]
     print(f"\n📉 Covered all shorts | Total P/L: ${total_pl:.2f}")
+    if total_exp > 0:
+        print(f"✨ Total EXP gained: {total_exp:.0f}")
+    # UI refresh
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
+    print_portfolio()
+    # Auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def cover_short():
-    global balance
+    global balance, shorts, stocks, current_page
     if not shorts:
         print("You have no short positions.")
         return
@@ -742,13 +911,40 @@ def cover_short():
             print("Not that many shares shorted.")
             return
 
-    profit = (shorts[stock]["sell_price"] - stocks[stock]) * qty
-    balance += profit + (shorts[stock]["sell_price"] * qty)
+    sell_price = float(shorts[stock].get("sell_price", 0.0))
+    current_price = float(stocks.get(stock, 0.0))
+    profit = (sell_price - current_price) * qty
+
+    # Award EXP if profit > 0
+    if profit > 0:
+        exp_gain = profit * 0.15
+        add_exp(exp_gain)
+
+    # Pay back / settle the short
+    balance += profit + (sell_price * qty)
     shorts[stock]["shares"] -= qty
     print(f"Covered {qty:.3f} of {stock}, P/L: ${profit:.2f}")
-    log_trade("COVER", stock, qty, stocks[stock], result=f"P/L ${profit:.2f}")
+    if 'log_trade' in globals():
+        try:
+            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
+        except Exception:
+            try:
+                trade_history.append({"type": "COVER", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${profit:.2f}"})
+            except Exception:
+                pass
     if shorts[stock]["shares"] <= 0:
         del shorts[stock]
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
+    print_portfolio()
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 # --- Bank ---
 def deposit_bank():
@@ -801,7 +997,14 @@ cds_opened_since_cooldown = 0       # tracks how many CDs opened since last cool
 
 def bank_cd_menu():
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global balance, bank_balance, days_passed
+    global balance, bank_balance, days_passed, player_level
+
+    REQUIRED_LEVEL = 5
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Certified Deposits (CDs) are locked until Level {REQUIRED_LEVEL}.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''} to open CDs.")
+        return
 
     while True:
         print("\n=== 💰 Certified Deposits (CD) Menu ===")
@@ -992,7 +1195,7 @@ def save_game():
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
-    global bank_interest_rate, next_interest_day, bank_interest_cost
+    global bank_interest_rate, next_interest_day, bank_interest_cost, exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats included
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history   # ✅ include Certified Deposits
 
@@ -1019,7 +1222,6 @@ def save_game():
         "portfolio": portfolio,
         "stocks": stocks,
         "stock_supply": stock_supply,
-        "stock_value" : stock_value,
         "insider_predictions": insider_predictions,
         "black_market_orders": black_market_orders,
         "heist_inventory": heist_inventory,
@@ -1049,13 +1251,22 @@ def save_game():
         "dlc_stocks_unlocked": dlc_stocks_unlocked,
         "purchased_dlcs": purchased_dlcs,
         "black_market_inventory": black_market_inventory,
+        "player_exp": player_exp,
+        "player_level": player_level,
+        "exp_to_next_level": exp_to_next_level,
+
         
     }
     
     try:
-        with open(SAVE_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-        print("💾 Game saved successfully.")
+        json_str = json.dumps(data)
+        encrypted = encrypt_data(json_str)
+
+        with open(SAVE_FILE, "wb") as f:
+            f.write(encrypted)
+
+        print("🔐 Encrypted game saved successfully.")
+
     except Exception as e:
         print(f"⚠️ Error saving game: {e}")
 
@@ -1066,10 +1277,26 @@ def load_game():
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
     global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day, stock_value, stock_supply
-    global bank_interest_rate, next_interest_day, bank_interest_cost
+    global bank_interest_rate, next_interest_day, bank_interest_cost, exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats is properly global
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history  # ✅ include Certified Deposits
+    
+    if not os.path.exists(SAVE_FILE):
+        print("📄 No encrypted save file found. Starting a new game.")
+        return
 
+    try:
+        with open(SAVE_FILE, "rb") as f:
+            encrypted = f.read()
+
+        decrypted_json = decrypt_data(encrypted)
+        data = json.loads(decrypted_json)
+
+    except Exception as e:
+        print("❌ Save file is corrupted or wrong password.")
+        print(f"Error: {e}")
+        return
+    
     if not os.path.exists(SAVE_FILE):
         print("📄 No save file found. Starting a new game.")
         balance = 5000.0
@@ -1142,7 +1369,10 @@ def load_game():
     crypto_history = data.get("crypto_history", {})
     stock_supply = data.get("stock_supply", {})
     stock_value = data.get("stock_value", {})
-    
+    player_exp = data.get("player_exp", 0)
+    player_level = data.get("player_level", 0)
+    exp_to_next_level = data.get("exp_to_next_level", 150)
+
     # ✅ Safely restore DLC data as lists (old saves used dicts sometimes)
     loaded_dlcs = data.get("purchased_dlcs", [])
     loaded_unlocked = data.get("dlc_stocks_unlocked", [])
@@ -1425,7 +1655,7 @@ def process_heist_wanted():
 # --- Game Mode  ---
 def choose_game_mode():
     """Prompt player for mode. Ensure stocks exist before using them."""
-    global balance, bank_interest_rate, bank_interest_cost, portfolio, stocks, mode
+    global balance, bank_interest_rate, bank_interest_cost, portfolio, stocks, mode, exp_to_next_level
 
     # Ensure market exists if somehow empty
     if not stocks:
@@ -1447,7 +1677,7 @@ def choose_game_mode():
     print("\n=== 🎮 Two Hidden Menus... One Gameplay Enhancement... And Two Hidden Gamemodes 🎮 ===")
     print("HINT: One option is for knowledge, the two gamemodes are HIGHLY ILLEGAL and can be found at the same place.")
     print()
-    print("\nVer: 1.0.5")
+    print("\nVer: 1.1.0")
 
     while True:
         choice = input("\nSelect mode (1=Easy, 2=Normal, 3=Hard): ").strip()
@@ -1495,6 +1725,7 @@ def choose_game_mode():
         mode = "Hard"
         balance = 1500.0
         bank_interest_cost *= 2
+        exp_to_next_level = 200
         print("\n🔴 Hard Mode Selected! Money is tight, interest upgrades cost more.")
         print("Bank upgrades cost double, and returns are reduced. Play carefully!")
 
@@ -1509,7 +1740,7 @@ def new_game():
     global portfolio, stocks, day, next_interest_day, mode, price_history, stock_supply
     global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed
     global last_auto_save_day, vegas_stats, INSIDER_INFO_COST
-    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history
+    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history, exp_to_next_level
 
 
     confirm = input("⚠️ Are you sure you want to start a NEW GAME? This will erase all progress! (yes/no): ").strip().lower()
@@ -1571,6 +1802,7 @@ def new_game():
     crypto_portfolio.clear()
     crypto_supply.clear()
     crypto_history.clear()
+    exp_to_next_level = 150
 
 
 
@@ -2485,7 +2717,15 @@ def vegas_stack_em():
 #--black market----------------------
 def black_market_menu():
     """Main black market hub."""
-    global black_market_inventory, black_market_orders
+    global black_market_inventory, black_market_orders, player_level, current_page, days_passed
+    
+    REQUIRED_LEVEL = 10
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Black Market locked — reach Level {REQUIRED_LEVEL} to access it.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''}.")
+        return
+    
     while True:
         print("\n=== ⚠️ BLACK MARKET ⚠️ ===")
         print(f"Cash: {format_money(balance)} | Day: {days_passed}")
@@ -4086,7 +4326,15 @@ SELL_IMPACT_FACTOR = 1.5   # price falls up to 1.5% per 1% of supply sold
 
 def crypto_menu():
     """Main Crypto Menu for creating and managing your coins."""
-    global balance
+    global balance, player_level
+    
+    REQUIRED_LEVEL = 15
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Crypto Menu is locked until Level {REQUIRED_LEVEL}.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''} to get access to crypto.")
+        return
+    
     while True:
         print("\n=== 🪙 CRYPTO MENU ===")
         show_crypto_market()
@@ -4679,7 +4927,7 @@ def auto_save_if_needed():
 def main():
     global current_page, play_mode
     print("Welcome to Terminal Stock Simulator! Created by Mr.SusBus And AI")
-    print("\nVer: 1.0.5")
+    print("\nVer: 1.1.0")
     if not os.path.exists(SAVE_FILE):
         # No save: ensure stocks exist then choose mode
         choose_game_mode()
@@ -4785,7 +5033,13 @@ def main():
             print("\nRoad Map: Off shore accounts, crypto curncey, improved heist games, more DLC, more black market items, more heist, improved black market menus, windows build, mobile game... ")
             print("\nUpated 1.0.5")
             print("\nAdded:")
-            print("Cryptocurrency menuv[crypto], command list [cmds]")
+            print("Cryptocurrency menu[crypto], command list [cmds]")
+            print("\nUpated 1.1.0")
+            print("\nAdded:")
+            print("Add new EXP & LvL system, get exp on your trades in the stock market to unlock new stocks and game play features.")
+            print("CD menus is not lock until LvL 5, Black market LvL 10, crypto menu LvL 15.")
+            print("LvL 3 you get 5 random stocks added, LvL 5 10, LvL 10 15, LvL 15 20, LvL 25 & 50 25, and 100 you get 50 new stocks.")
+            print("add back save file file encryption, and hard mode staring exp for lvl one 200 ")
         else:
             print("Invalid option.")
         
