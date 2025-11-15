@@ -1194,7 +1194,7 @@ def save_game():
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history
     global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
-    global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
+    global heist_history, player_has_fake_id, INSIDER_INFO_COST, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
     global stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
@@ -1216,7 +1216,7 @@ def save_game():
         "heist_wanted_flags": heist_wanted_flags,
         "heist_history": heist_history,
         "player_has_fake_id": player_has_fake_id,
-        "insider_info_cost": insider_info_cost,
+        "INSIDER_INFO_COST": INSIDER_INFO_COST,
         "price_history": price_history,
         "black_market_history": black_market_history,
         "FAKE_ID_COST": FAKE_ID_COST,
@@ -1261,7 +1261,7 @@ def load_game():
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history
     global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
-    global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
+    global heist_history, player_has_fake_id, INSIDER_INFO_COST, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
     global stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
@@ -1301,7 +1301,7 @@ def load_game():
     heist_wanted_flags = data.get("heist_wanted_flags", [])
     heist_history = data.get("heist_history", [])
     player_has_fake_id = data.get("player_has_fake_id", False)
-    insider_info_cost = data.get("insider_info_cost", 10000)
+    INSIDER_INFO_COST = data.get("INSIDER_INFO_COST", 10000)
     price_history = data.get("price_history", {})
     black_market_history = data.get("black_market_history", [])
     FAKE_ID_COST = data.get("FAKE_ID_COST", 15000.0)
@@ -1634,7 +1634,7 @@ def new_game():
     """Wipes save data and restarts from game mode selection."""
     global balance, bank_balance, bank_interest_rate, bank_interest_cost
     global portfolio, stocks, day, next_interest_day, mode, price_history, stock_supply
-    global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed
+    global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed, player_exp, player_level, exp_to_next_level
     global last_auto_save_day, vegas_stats, INSIDER_INFO_COST
     global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history, exp_to_next_level
 
@@ -1698,9 +1698,11 @@ def new_game():
     crypto_portfolio.clear()
     crypto_supply.clear()
     crypto_history.clear()
-    exp_to_next_level = 150
-    player_exp = 0
-    player_level = 0
+# Reset XP & Level ONLY if starting truly fresh
+    if not os.path.exists(SAVE_FILE):
+        player_exp = 0
+        player_level = 0
+        exp_to_next_level = 150
 
 
 
@@ -4944,4 +4946,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
