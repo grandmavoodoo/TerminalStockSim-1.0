@@ -1,10 +1,26 @@
-# TerminalStockSim-1.0
+# TerminalStockSim-1.1.0
 Made By Mr.SusBus aka GrandmaVoodo and AI
 
 Stock trader sim for your terminal, with a twist...
 
 The game is all in one file "Stock_Sim.py"
 
+linux Install Guide: Recommended!
+1) (Optional) Install system packages you may need
+   - Use this CMD "sudo apt update && sudo apt install -y python3 python3-venv python3-pip python3-tk build-essential"
+2) Create a managed virtual environment (recommended location: project folder)
+   - got to your folder where the game is installed "cd /path/to/your/game"
+   - Run this CMD "python3 -m venv .venv"
+   - Run this CMD "source .venv/bin/activate"
+4) In your VE install all Python dependencies
+   - Run this CMD "python -m pip install --upgrade pip && pip install numpy matplotlib cryptography"
+5) Run the game.
+   - Run this CMD "python Stock_Sim.py"
+
+
+
+
+Old Install - Quick.
 Install Guide for Lunix:
 1. Make a folder Call it what ever put Stock_Sim.py in that folder.
 2. open terminal and run this command:
