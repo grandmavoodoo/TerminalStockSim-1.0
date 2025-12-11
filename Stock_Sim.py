@@ -83,6 +83,8 @@ DAILY_DRIFT = 0.0005
 DAILY_VOLATILITY = 0.02
 # --- Stock Order System ---
 stock_orders = []   # {type: "buy"/"sell", stock, qty, target_price}
+stock_trade_history = []
+
 
 
 # --- DLC Setup ---
@@ -876,7 +878,8 @@ def cancel_order():
 
 
 def process_stock_orders():
-    global stock_orders, balance, portfolio, shorts, stock_trade_history
+    global stock_orders, balance, portfolio, shorts, trade_history
+    global trade_history
 
     if not stock_orders:
         return
@@ -912,7 +915,7 @@ def process_stock_orders():
                         "avg_price": order["target_price"]
                     }
 
-                stock_trade_history.append(
+                trade_history.append(
                     f"LIMIT BUY EXECUTED: Bought {order['qty']} {stock} @ ${order['target_price']:.2f}"
                 )
                 executed.append(order)
@@ -928,7 +931,7 @@ def process_stock_orders():
                 if portfolio[stock]["qty"] <= 0:
                     del portfolio[stock]
 
-                stock_trade_history.append(
+                trade_history.append(
                     f"LIMIT SELL EXECUTED: Sold {order['qty']} {stock} @ ${order['target_price']:.2f}"
                 )
                 executed.append(order)
@@ -944,7 +947,7 @@ def process_stock_orders():
             shorts[stock]["shares"] += order["qty"]
             shorts[stock]["sell_price"] = entry_price
 
-            stock_trade_history.append(
+            trade_history.append(
                 f"LIMIT SHORT EXECUTED: Shorted {order['qty']} {stock} @ ${entry_price:.2f}"
             )
             executed.append(order)
@@ -965,7 +968,7 @@ def process_stock_orders():
                 if shorts[stock]["shares"] <= 0:
                     del shorts[stock]
 
-                stock_trade_history.append(
+                trade_history.append(
                     f"LIMIT COVER EXECUTED: Covered {qty} {stock} @ ${cover_price:.2f} (P/L: ${profit:.2f})"
                 )
                 executed.append(order)
@@ -1591,7 +1594,7 @@ def save_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts, trade_history
 
     data = {
         "balance": balance,
@@ -1633,7 +1636,8 @@ def save_game():
         "exp_to_next_level": exp_to_next_level,
         "mode": mode,
         "stock_orders": stock_orders,
-        "shorts": shorts
+        "shorts": shorts,
+
 
     }
 
@@ -1665,7 +1669,8 @@ def load_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts, trade_history
+
 
     if SAVE_FILE is None or not os.path.exists(SAVE_FILE):
         print("📄 No save found in this slot. Starting new game.")
@@ -1713,6 +1718,9 @@ def load_game():
     trade_history = data.get("trade_history", [])
     stock_orders = data.get("stock_orders", [])
     shorts = data.get("shorts", {})
+
+    
+    
 
     # Crypto systems
     cryptos = data.get("cryptos", {})
@@ -2041,7 +2049,8 @@ def new_game():
     global portfolio, stocks, day, next_interest_day, mode, price_history, stock_supply
     global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed, player_exp, player_level, exp_to_next_level
     global last_auto_save_day, vegas_stats, INSIDER_INFO_COST
-    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history, exp_to_next_level
+    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history, exp_to_next_level, show_trade_history
+    global stock_orders, stock_trade_history   # ← add here
 
 
     confirm = input("⚠️ Are you sure you want to start a NEW GAME? This will erase all progress! (yes/no): ").strip().lower()
@@ -2103,6 +2112,7 @@ def new_game():
     crypto_portfolio.clear()
     crypto_supply.clear()
     crypto_history.clear()
+    show_trade_history = []
 # Reset XP & Level ONLY if starting truly fresh
     if not os.path.exists(SAVE_FILE):
         player_exp = 0
