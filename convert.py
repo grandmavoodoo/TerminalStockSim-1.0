@@ -53,7 +53,6 @@ except Exception:
     msvcrt = None
 
 def windows_getch():
-    \"\"\"Return one character (as a Python string) read from console on Windows.\"\"\"
     if msvcrt is None:
         raise RuntimeError("msvcrt not available. This script expects to run on Windows.")
     ch = msvcrt.getwch()
@@ -65,7 +64,6 @@ def windows_kbhit():
     return msvcrt.kbhit()
 
 def windows_readline_nonblocking(timeout=0.0):
-    \"\"\"Attempt to read characters typed within `timeout` seconds. Returns accumulated string.\"\"\"
     if msvcrt is None:
         return ""
     import time as _time
@@ -126,3 +124,4 @@ with io.open(DST, "w", encoding="utf-8") as out_f:
 print(f"Converted file written to: {DST}")
 print("Please inspect the file for any remaining platform-specific calls and test it on Windows.")
 print("If you run into a specific error, paste the traceback and I will patch the converter further.")
+
