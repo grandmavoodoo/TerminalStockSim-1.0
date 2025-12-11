@@ -1,9 +1,8 @@
-# WINDOWS_CONVERSION_NOTE: This file was auto-generated from a Unix-friendly version.
+# WINDOWS_CONVERSION_NOTE: Auto-converted to Windows.
 #TERMINAL STOCK SIM -------
 import random
 
 # --- WINDOWS CONSOLE ADAPTATION ---
-# Replaced Unix-only terminal handling with msvcrt (Windows)
 try:
     import msvcrt
 except Exception:
@@ -11,9 +10,8 @@ except Exception:
 
 def windows_getch():
     if msvcrt is None:
-        raise RuntimeError("msvcrt not available. This script expects to run on Windows.")
-    ch = msvcrt.getwch()
-    return ch
+        raise RuntimeError("msvcrt not available")
+    return msvcrt.getwch()
 
 def windows_kbhit():
     if msvcrt is None:
@@ -29,18 +27,14 @@ def windows_readline_nonblocking(timeout=0.0):
     while True:
         if msvcrt.kbhit():
             c = msvcrt.getwch()
-            # translate CR to newline
             if c == '\\r':
                 c = '\\n'
             s += c
-            # if user pressed Enter, stop
             if c == '\\n':
                 break
         if timeout > 0 and (_time.time() - start) >= timeout:
             break
     return s
-
-# End Windows helpers
 
 import json
 import os
@@ -60,6 +54,16 @@ import sys, time, random
 
 
 SAVE_FILE = "stock_save.json"
+
+SAVE_SLOTS = [
+    "save_slot_1.dat",
+    "save_slot_2.dat",
+    "save_slot_3.dat",
+    "save_slot_4.dat"
+]
+
+CURRENT_SLOT = None  # Tracks which slot is active
+
 
 # =========================
 # 🔐 Encryption System
@@ -104,16 +108,20 @@ FAST_FORWARD_COOLDOWN_DAYS = 7
 last_fast_forward_day = None     
 FAKE_ID_LOCK_DAYS = 95
 fake_id_locked_until = 0
-vegas_jackpot = 25000.0  # base jackpot value
+vegas_jackpot = 25000.0  
 NEW_GAME_FLAG = False
-
-
-# --- NEW: per-stock supply mapping ---
-stock_supply = {}  # mapping stock -> total available supply (int)
-
-# --- GBM Parameters ---
+# --- EXP / Level System ---
+player_exp = 0
+player_level = 0
+exp_to_next_level = 150  # Level 0 → 1 requires 150 EXP
+stock_supply = {} 
 DAILY_DRIFT = 0.0005
 DAILY_VOLATILITY = 0.02
+# --- Stock Order System ---
+stock_orders = []   # {type: "buy"/"sell", stock, qty, target_price}
+stock_trade_history = []
+
+
 
 # --- DLC Setup ---
 dlc_packs = {
@@ -125,7 +133,20 @@ dlc_packs = {
     "Luxury Legends DLC": {"stocks": ["PRADA", "ROLEX", "TESORO", "DIORX", "MCLRN"], "price": 69000.99},
     "AI Uprising DLC": {"stocks": ["SYNTHIX", "QUANTIA", "NEURONIX", "BOTCORP", "CYNET"], "price": 77777.77},
     "Sus Bus DLC": {"stocks": ["DASUSBUS", "MORESUS", "XSdUSX", "2045", "SUSCOIN","MOREBUS","BIGSUS","LILSUS","MEGASUS","SMALLSUS"], "price": 42069.99},
-    "MEME DLC": {"stocks": ["OVR9000", "80085", "AMUNGUS", "TRUMPCOIN", "PEPE","DOGECOIN","FARTCOIN","GIGACHAD","TOTHEMOON","AVOCADO"], "price": 123456.78}
+    "MEME DLC": {"stocks": ["OVR9000", "80085", "AMUNGUS", "TRUMPCOIN", "PEPE","DOGECOIN","FARTCOIN","GIGACHAD","TOTHEMOON","AVOCADO"], "price": 123456.78},
+    "Quantum Finance DLC": {"stocks": ["QBITX", "ENTANGLO", "PHASECORE", "QUARKSYS", "GRAVITEX"], "price": 42000.42},
+    "Industrial Overdrive DLC": {"stocks": ["MECHTEK", "FURNACECO", "IRONCOREX", "STEELWORKS", "DRILLMAX"], "price": 30000.75},
+    "Galactic Frontier DLC": {"stocks": ["STELLARX", "NEBULON", "ASTROMINE", "COSMOCORE", "WARPDRIVE"], "price": 55555.55},
+    "Food Frenzy DLC": {"stocks": ["BURGRX", "MEGAFRY", "PIZZAPRO", "TACOCORP", "ICECREAMZ"], "price": 16999.69},
+    "Corporate Chaos DLC": {"stocks": ["LOBBYX", "SHADYCO", "MEGAMERGE", "TAXHAVEN", "OFFSHORX"], "price": 88888.88},
+    "Retro Gamer Legends DLC": {"stocks": ["ARCADIA", "PIXELFORCE", "RETROSOFT", "BLIPCO", "NEONBYTE"], "price": 49999.99},
+    "Dank Bank DLC": {"stocks": ["LOLCASH","BR0KE","MONEYSUS","RUGPULL","CASHM8","BANKRUPT","EZLOAN","FASTCASH","MONEYLOL","STONKZ","DEBTX","OVERDRAFT","BIGWALLET","FRAUDCO","CASHLORD"], "price": 42069.69},
+    "Fat Cat DLC": {"stocks": ["CATCEO","PAWZ","FATCATX","PURRR","CLAWCO","MEOWINC","KITTYBANK","WHISKERX","SCRATCHY","HUNGRYCAT","BIGPURR","CHONK","MILKMINER","NIGHTCAT","CATSTACK"], "price": 39999.95},
+    "Snack Attack DLC": {"stocks": ["CHIPZ","BURNTFRY","SLURPO","NACHOX","POPCRN","TATERZ","WINGZ","MOZZY","TASTYCO","CHONKSODA","HOTSAUCX","BIGGULP","SPICYBOI","CRUNCHX","BLOATED"], "price": 28999.69},
+    "Scuffed Bots DLC": {"stocks": ["BOTFAIL","GLITCHX","AISCAM","ROBOTDUMB","404AI","BOOTLEGAI","SMARTISH","BEEPBORK","BUGOS","OVERHEAT","FRIEDCPU","BYTEBORK","BROKENCODE","SCAMWARE","HAL9001"], "price": 77777.00},
+    "Dollar Store DLC": {"stocks": ["CHEEP","DISCOUNTX","OFFBRAND","SAVEMORE","ALMOSTGOOD","DOLLABUY","CLOSEENOUGH","KNOCKOFF","VALUEZ","CHEAPAF","PRICEDOWN","STILLWORKS","BUDGETCO","GOODNUFF","EZBUY"], "price": 15999.11},
+
+
 }
 
 purchased_dlcs = []
@@ -248,6 +269,56 @@ heist_wanted_flags = []  # list of dicts: { "type": "bank"|"hacking", "days_left
 heist_history = []     # record of completed/failed heists
 HEIST_WANTED_DAYS = 60
 HEIST_CATCH_PROB_TOTAL = 0.30  # 30% chance across the window
+
+
+# --- AUTO-UNLOCK NEW STOCKS ON LEVEL UPS ---
+LEVEL_STOCK_UNLOCKS = {
+    3: 5,
+    5: 10,
+    10: 15,
+    15: 20,
+    25: 25,
+    50: 25,
+    100: 50
+}
+
+UNLOCKED_LEVELS = set()   # prevents duplicate unlocking
+
+
+def unlock_level_stocks(level):
+    """Unlock NEW randomly generated stocks when the player hits certain levels."""
+    global stocks, stock_supply, price_history
+
+    if level not in LEVEL_STOCK_UNLOCKS:
+        return
+
+    if level in UNLOCKED_LEVELS:
+        return  # already unlocked for this save
+
+    UNLOCKED_LEVELS.add(level)
+
+    num_new = LEVEL_STOCK_UNLOCKS[level]
+
+    # Generate stock names that don’t exist yet
+    def generate_unique_stock_name():
+        while True:
+            name = "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(4))
+            if name not in stocks:
+                return name
+
+    print(f"\n🚀 NEW MARKET UNLOCK! You reached LEVEL {level}!")
+    print(f"📈 {num_new} brand-new stocks have entered the market!\n")
+
+    for _ in range(num_new):
+        name = generate_unique_stock_name()
+        price = round(random.uniform(5, 800), 2)
+
+        stocks[name] = price
+        stock_supply[name] = random.randint(50000, 2000000)
+        price_history[name] = generate_stock_history(price, days=random.randint(40, 120))
+
+    save_game()
+
 
 
 def generate_stock_history(current_price, days=60):
@@ -423,7 +494,7 @@ def show_all():
     print("------------------------------------------------------------------")
 
 def print_portfolio():
-    print("\n=== 💼 Portfolio 💼 ===")
+    print(f"\n=== 💼 Portfolio 💼 === Level: {player_level} | EXP: {player_exp:.0f} / {exp_to_next_level} ===")
     print(f" 🗓️  Day: {days_passed}")
     total_value = balance + bank_balance
     if not portfolio:
@@ -441,12 +512,13 @@ def print_portfolio():
         change_pct = ((short["sell_price"] - stocks.get(name, 0.0)) / short["sell_price"]) * 100 if short["sell_price"] > 0 else 0
         total_value += short_value
         print(f"{name} (SHORT): {short['shares']:.3f} shares | P/L: ${short_value:.2f} | Gain/Loss: {change_pct:.2f}%")
+    view_orders()
     print()
     print(f"💰  Cash: {format_money(balance)}")
     print(f"🏛️  Bank: {format_money(bank_balance)}")
     print(f"📈 Bank Interest: {bank_interest_rate*100:.3f}% | Upgrade Cost: ${bank_interest_cost:.2f}")
     print(f"💲 Total Value: {format_money(total_value)}")
-    print("=========================")
+    print("==================================================")
 
 def show_trade_history():
     print("\n=== Trade History (last 100 trades) ===")
@@ -458,6 +530,91 @@ def show_trade_history():
     print("=========================")
 
 # --- Core ---
+
+def choose_save_slot():
+    global CURRENT_SLOT, SAVE_FILE
+
+    print("\n🎮 Select Save Slot:")
+
+    for i, slot in enumerate(SAVE_SLOTS, 1):
+        if os.path.exists(slot):
+            meta = read_save_metadata(slot)
+
+            if meta:
+                lvl = meta.get("player_level", 0)
+                money = f"{meta.get('balance', 0):,}"
+                day = meta.get("day", 0)
+                mode = meta.get("mode", "Unknown")
+
+                print(f"{i}. Slot {i} — ✔ USED")
+                print(f"   ➤ Level: {lvl}")
+                print(f"   ➤ Money: ${money}")
+                print(f"   ➤ Day: {day}")
+                print(f"   ➤ Mode: {mode}")
+            else:
+                print(f"{i}. Slot {i} — ⚠ CORRUPTED SAVE")
+        else:
+            print(f"{i}. Slot {i} — ✖ EMPTY")
+
+    # Player selects slot
+    while True:
+        choice = input("Choose slot (1-4): ").strip()
+        if choice in ["1", "2", "3", "4"]:
+            CURRENT_SLOT = int(choice) - 1
+            SAVE_FILE = SAVE_SLOTS[CURRENT_SLOT]
+            break
+        print("Invalid choice. Select slot 1, 2, 3 or 4.")
+
+    # Load existing save or start new game
+    if os.path.exists(SAVE_FILE):
+        print(f"\n📁 Loading Save Slot {CURRENT_SLOT+1}...\n")
+        load_game()
+    else:
+        print(f"\n📄 Slot {CURRENT_SLOT+1} is empty — starting NEW GAME!\n")
+        new_game()
+
+def read_save_metadata(path):
+    """Return (player_level, balance, day, mode) from an encrypted save file, or None if corrupted."""
+    if not os.path.exists(path):
+        return None  # no save file exists
+
+    try:
+        # Read encrypted bytes
+        with open(path, "rb") as f:
+            encrypted = f.read()
+
+        # Decrypt
+        decrypted_json = decrypt_data(encrypted)
+
+        # Parse JSON
+        data = json.loads(decrypted_json)
+
+        # Extract metadata safely
+        level = data.get("player_level", 0)
+        balance = data.get("balance", 0.0)
+        day = data.get("days_passed", 0)
+        mode = data.get("mode", "Unknown")
+
+        return {
+            "level": level,
+            "balance": balance,
+            "day": day,
+            "mode": mode
+        }
+
+    except Exception as e:
+        # If ANYTHING fails (decryption, json parsing, missing fields), treat as corrupted
+        return None
+
+
+def activate_cheater_mode():
+    global mode
+    mode = "CHEATER"
+    print("⚠️ CHEATER MODE ACTIVATED! Your save file will show CHEATER mode.")
+    save_game()   # Make the change permanent
+
+
+
 def log_trade(action, stock, qty, price, result=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"[{timestamp}] {action.upper()} {qty:.3f}x {stock} @ ${price:.2f}"
@@ -615,6 +772,320 @@ def show_market_graph():
         play_mode = was_playing
 
 # --- Trading ---
+
+def add_exp(amount):
+    """Add EXP and handle level-ups. amount may be float."""
+    global player_exp, player_level, exp_to_next_level
+    try:
+        amount = float(amount)
+    except Exception:
+        return
+    if amount <= 0:
+        return
+    player_exp += amount
+    print(f"✨ Gained {amount:.0f} EXP")
+    # Level up loop (support multi-level at once)
+    leveled = False
+    while player_exp >= exp_to_next_level:
+        player_exp -= exp_to_next_level
+        player_level += 1
+        leveled = True
+        print(f"\n🎉 LEVEL UP! You are now LEVEL {player_level}!\n")
+        
+        unlock_level_stocks(player_level)
+        
+        # next level requires +15%
+        exp_to_next_level = int(exp_to_next_level * 1.15)
+    if leveled:
+        # show new progress
+        print(f"Progress: {player_exp:.0f} / {exp_to_next_level} EXP")
+    # auto-save to persist progress if save_game exists
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
+
+def place_order():
+    global balance, portfolio, stock_orders
+
+    print("\n=== 📈 PLACE ORDER (BUY / SELL) ===")
+    stock = input("Enter stock symbol: ").upper()
+    if stock not in stocks:
+        print("Invalid stock.")
+        return
+
+    try:
+        qty = float(input("Enter quantity: "))
+        if qty <= 0:
+            print("Enter a positive quantity.")
+            return
+    except:
+        print("Invalid amount.")
+        return
+
+    order_type = input("Order type (buy/sell): ").lower().strip()
+    if order_type not in ["buy", "sell"]:
+        print("Invalid order type.")
+        return
+
+    try:
+        target_price = float(input("Enter target price: "))
+        if target_price <= 0:
+            print("Price must be positive.")
+            return
+    except:
+        print("Invalid price.")
+        return
+
+    # --- VALIDATION ---
+    if order_type == "buy":
+        total_cost = qty * target_price
+        if total_cost > balance:
+            print(f"❌ Not enough cash! Required: ${total_cost:,.2f}, Available: ${balance:,.2f}")
+            return
+
+    if order_type == "sell":
+        if stock not in portfolio or portfolio[stock]["qty"] < qty:
+            print("❌ You don't have enough shares to place this sell order.")
+            return
+
+    # --- CREATE ORDER ---
+    order = {
+        "type": order_type,
+        "stock": stock,
+        "qty": qty,
+        "target_price": target_price
+    }
+    stock_orders.append(order)
+
+    print(f"✅ Order placed: {order_type.upper()} {qty} {stock} @ ${target_price:.2f}")
+
+def order_menu():
+    while True:
+        print("\n=== 📋 ORDER MENU ===")
+        print("1) Place Buy/Sell Order")
+        print("2) Place Short/Cover Order")
+        print("3) View Orders")
+        print("4) Cancel Order")
+        print("Q) Back")
+        ch = input("Choose: ").lower()
+
+        if ch == "1":
+            place_order()
+        elif ch == "2":
+            place_short_cover_order()
+        elif ch == "3":
+            view_orders()
+        elif ch == "4":
+            cancel_order()
+        elif ch == "q":
+            return
+        else:
+            print("Invalid option.")
+
+def view_orders():
+    if not stock_orders:
+        print("\nNo active orders.")
+        return
+
+    print("\n=== ACTIVE ORDERS ===")
+    for i, o in enumerate(stock_orders, 1):
+        print(f"{i}) {o['type'].upper()} {o['qty']} {o['stock']} @ ${o['target_price']:.2f}")
+
+def cancel_order():
+    if not stock_orders:
+        print("No orders to cancel.")
+        return
+    
+    view_orders()
+    try:
+        i = int(input("Select order to cancel: ")) - 1
+    except:
+        print("Invalid input.")
+        return
+
+    if 0 <= i < len(stock_orders):
+        removed = stock_orders.pop(i)
+        print(f"Cancelled: {removed['type']} {removed['qty']}x {removed['stock']} @ ${removed['target_price']}")
+    else:
+        print("Invalid selection.")
+
+
+def process_stock_orders():
+    global stock_orders, balance, portfolio, shorts, trade_history
+    global trade_history
+
+    if not stock_orders:
+        return
+
+    executed = []
+
+    # ---------------------------------------
+    # MAIN LOOP: iterates over each order
+    # ---------------------------------------
+    for order in stock_orders:
+
+        stock = order["stock"]
+        price = stocks.get(stock, None)
+        if price is None:
+            continue
+
+        # BUY --------------------------------
+        if order["type"] == "buy" and price <= order["target_price"]:
+            cost = order["qty"] * order["target_price"]
+            if cost <= balance:
+                balance -= cost
+
+                if stock in portfolio:
+                    old_qty = portfolio[stock]["qty"]
+                    old_price = portfolio[stock]["avg_price"]
+                    new_qty = old_qty + order["qty"]
+                    new_avg = ((old_qty * old_price) + cost) / new_qty
+                    portfolio[stock]["qty"] = new_qty
+                    portfolio[stock]["avg_price"] = new_avg
+                else:
+                    portfolio[stock] = {
+                        "qty": order["qty"],
+                        "avg_price": order["target_price"]
+                    }
+
+                trade_history.append(
+                    f"LIMIT BUY EXECUTED: Bought {order['qty']} {stock} @ ${order['target_price']:.2f}"
+                )
+                executed.append(order)
+                continue
+
+        # SELL -------------------------------
+        elif order["type"] == "sell" and price >= order["target_price"]:
+            if stock in portfolio and portfolio[stock]["qty"] >= order["qty"]:
+                revenue = order["qty"] * order["target_price"]
+                balance += revenue
+
+                portfolio[stock]["qty"] -= order["qty"]
+                if portfolio[stock]["qty"] <= 0:
+                    del portfolio[stock]
+
+                trade_history.append(
+                    f"LIMIT SELL EXECUTED: Sold {order['qty']} {stock} @ ${order['target_price']:.2f}"
+                )
+                executed.append(order)
+                continue
+
+        # SHORT -------------------------------
+        elif order["type"] == "short" and price >= order["target_price"]:
+            entry_price = order["target_price"]
+
+            if stock not in shorts:
+                shorts[stock] = {"shares": 0, "sell_price": entry_price}
+
+            shorts[stock]["shares"] += order["qty"]
+            shorts[stock]["sell_price"] = entry_price
+
+            trade_history.append(
+                f"LIMIT SHORT EXECUTED: Shorted {order['qty']} {stock} @ ${entry_price:.2f}"
+            )
+            executed.append(order)
+            continue
+
+        # COVER -------------------------------
+        elif order["type"] == "cover" and price <= order["target_price"]:
+            if stock in shorts and shorts[stock]["shares"] >= order["qty"]:
+
+                cover_price = order["target_price"]
+                entry_price = shorts[stock]["sell_price"]
+                qty = order["qty"]
+
+                profit = (entry_price - cover_price) * qty
+                balance += (entry_price * qty) + profit
+
+                shorts[stock]["shares"] -= qty
+                if shorts[stock]["shares"] <= 0:
+                    del shorts[stock]
+
+                trade_history.append(
+                    f"LIMIT COVER EXECUTED: Covered {qty} {stock} @ ${cover_price:.2f} (P/L: ${profit:.2f})"
+                )
+                executed.append(order)
+                continue
+
+    # Remove executed orders
+    for done in executed:
+        if done in stock_orders:
+            stock_orders.remove(done)
+
+
+
+def place_short_cover_order():
+    global portfolio, shorts, balance, stock_orders
+
+    print("\n=== 📉 PLACE SHORT / COVER ORDER ===")
+    stock = input("Enter stock symbol: ").upper()
+    if stock not in stocks:
+        print("Invalid stock.")
+        return
+
+    try:
+        qty = float(input("Enter quantity: "))
+        if qty <= 0:
+            print("Enter a positive quantity.")
+            return
+    except:
+        print("Invalid amount.")
+        return
+
+    print("\nOrder types:")
+    print("1) Short (open a short position)")
+    print("2) Cover (close a short position)")
+    choice = input("Choose: ").strip()
+
+    if choice == "1":  
+        order_type = "short"
+
+        # SHORT VALIDATION — player needs enough supply to borrow
+        supply = stock_supply.get(stock, 0)
+        currently_short = shorts.get(stock, {}).get("shares", 0)
+        max_short_possible = max(0, supply - currently_short)
+
+        if qty > max_short_possible:
+            print(f"❌ Not enough stock available to borrow for shorting.")
+            print(f"Available to short: {max_short_possible:.3f}")
+            return
+
+    elif choice == "2":
+        order_type = "cover"
+
+        if stock not in shorts or shorts[stock]["shares"] < qty:
+            print("❌ Not enough shorted shares to place this cover order.")
+            return
+    else:
+        print("Invalid choice.")
+        return
+
+    # Target price
+    try:
+        target_price = float(input("Enter target price: "))
+        if target_price <= 0:
+            print("Price must be positive.")
+            return
+    except:
+        print("Invalid price.")
+        return
+
+    # CREATE ORDER
+    order = {
+        "type": order_type,
+        "stock": stock,
+        "qty": qty,
+        "target_price": target_price
+    }
+    stock_orders.append(order)
+
+    print(f"✅ Order placed: {order_type.upper()} {qty} {stock} @ ${target_price:.2f}")
+
+
+
 def buy_stock():
     global balance
     stock = input("Enter stock name to buy: ").upper()
@@ -654,7 +1125,7 @@ def buy_stock():
     log_trade("BUY", stock, qty, stocks[stock])
 
 def sell_stock():
-    global balance
+    global balance, portfolio, stocks, current_page
     if not portfolio:
         print("You don’t own any stocks.")
         return
@@ -681,41 +1152,96 @@ def sell_stock():
             print("Not enough shares.")
             return
 
-    avg_price = portfolio[stock]["avg_price"]
-    gain_loss = qty * (stocks[stock] - avg_price)  # profit/loss
-    balance += qty * stocks[stock]
+    # Safely read avg price and current price
+    avg_price = float(portfolio[stock].get("avg_price", 0.0))
+    current_price = float(stocks.get(stock, 0.0))
+
+    # Compute profit/loss BEFORE awarding EXP
+    gain_loss = qty * (current_price - avg_price)  # profit (can be negative)
+    profit = gain_loss  # explicit name for clarity
+
+    # Transfer cash to player
+    balance += qty * current_price
+
+    # Update portfolio
     portfolio[stock]["qty"] -= qty
     if portfolio[stock]["qty"] <= 0:
         del portfolio[stock]
 
-    print(f"Sold {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
-    log_trade("SELL", stock, qty, stocks[stock], result=f"P/L ${gain_loss:.2f}")
+    # Award EXP if profit > 0
+    if profit > 0:
+        exp_gain = profit * 0.15
+        add_exp(exp_gain)
 
-    # --- Refresh display after selling ---
-    print_stocks(current_page)
+    print(f"Sold {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
+    if 'log_trade' in globals():
+        try:
+            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
+        except Exception:
+            # fallback: basic trade log append if structure exists
+            try:
+                trade_history.append({"type": "SELL", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${gain_loss:.2f}"})
+            except Exception:
+                pass
+
+    # Refresh UI
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
     print_portfolio()
+    # auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def sell_all():
-    global balance
+    global balance, portfolio, stocks, current_page
     if not portfolio:
         print("You don’t own any stocks.")
         return
     total_proceeds = 0
+    total_profit = 0
     for stock, data in list(portfolio.items()):
         qty = data["qty"]
-        avg_price = data["avg_price"]
-        gain_loss = qty * (stocks[stock] - avg_price)
-        proceeds = qty * stocks[stock]
+        avg_price = float(data.get("avg_price", 0.0))
+        current_price = float(stocks.get(stock, 0.0))
+        gain_loss = qty * (current_price - avg_price)  # profit or loss
+        proceeds = qty * current_price
+        # Add cash
         balance += proceeds
         total_proceeds += proceeds
-        log_trade("SELL", stock, qty, stocks[stock], result=f"P/L ${gain_loss:.2f}")
+        total_profit += gain_loss
+        # Award EXP for profits only
+        if gain_loss > 0:
+            exp_gain = gain_loss * 0.15
+            add_exp(exp_gain)
+        # Log trade
+        try:
+            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
+        except Exception:
+            pass
         print(f"Sold all {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
         del portfolio[stock]
-    print(f"\n💰 Sold all holdings | Total proceeds: ${total_proceeds:.2f}")
 
-    # Refresh display
-    print_stocks(current_page)
+    print(f"\n💰 Sold all holdings | Total proceeds: ${total_proceeds:.2f}")
+    print(f"✨ Total Profit: ${total_profit:.2f} | EXP gained automatically if profitable trades")
+    # UI refresh
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
     print_portfolio()
+    # Auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def short_stock():
     global balance
@@ -739,25 +1265,55 @@ def short_stock():
         shorts[stock] = {"shares": qty, "sell_price": stocks[stock]}
     print(f"Shorted {qty:.3f} {stock} using ${cost_to_short:.2f} margin.")
     log_trade("SHORT", stock, qty, stocks[stock])
+    print_stocks(current_page)
+    print_portfolio()
 
 def cover_all():
-    global balance
+    global balance, shorts, stocks, current_page
     if not shorts:
         print("No short positions to cover.")
         return
     total_pl = 0
+    total_exp = 0
     for stock, data in list(shorts.items()):
         qty = data["shares"]
-        profit = (data["sell_price"] - stocks[stock]) * qty
-        balance += profit + (data["sell_price"] * qty)
+        sell_price = float(data.get("sell_price", 0.0))
+        current_price = float(stocks.get(stock, 0.0))
+        profit = (sell_price - current_price) * qty
         total_pl += profit
-        log_trade("COVER", stock, qty, stocks[stock], result=f"P/L ${profit:.2f}")
+        # Award EXP for profits only
+        if profit > 0:
+            exp_gain = profit * 0.15
+            total_exp += exp_gain
+            add_exp(exp_gain)
+        # Settle the short
+        balance += profit + (sell_price * qty)
+        # Log trade
+        try:
+            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
+        except Exception:
+            pass
         print(f"Covered all {qty:.3f} of {stock}, P/L: ${profit:.2f}")
         del shorts[stock]
     print(f"\n📉 Covered all shorts | Total P/L: ${total_pl:.2f}")
+    if total_exp > 0:
+        print(f"✨ Total EXP gained: {total_exp:.0f}")
+    # UI refresh
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
+    print_portfolio()
+    # Auto-save
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 def cover_short():
-    global balance
+    global balance, shorts, stocks, current_page
     if not shorts:
         print("You have no short positions.")
         return
@@ -784,13 +1340,40 @@ def cover_short():
             print("Not that many shares shorted.")
             return
 
-    profit = (shorts[stock]["sell_price"] - stocks[stock]) * qty
-    balance += profit + (shorts[stock]["sell_price"] * qty)
+    sell_price = float(shorts[stock].get("sell_price", 0.0))
+    current_price = float(stocks.get(stock, 0.0))
+    profit = (sell_price - current_price) * qty
+
+    # Award EXP if profit > 0
+    if profit > 0:
+        exp_gain = profit * 0.15
+        add_exp(exp_gain)
+
+    # Pay back / settle the short
+    balance += profit + (sell_price * qty)
     shorts[stock]["shares"] -= qty
     print(f"Covered {qty:.3f} of {stock}, P/L: ${profit:.2f}")
-    log_trade("COVER", stock, qty, stocks[stock], result=f"P/L ${profit:.2f}")
+    if 'log_trade' in globals():
+        try:
+            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
+        except Exception:
+            try:
+                trade_history.append({"type": "COVER", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${profit:.2f}"})
+            except Exception:
+                pass
     if shorts[stock]["shares"] <= 0:
         del shorts[stock]
+    try:
+        print_stocks(current_page)
+    except Exception:
+        pass
+    print_portfolio()
+    if 'save_game' in globals():
+        try:
+            save_game()
+        except Exception:
+            pass
+
 
 # --- Bank ---
 def deposit_bank():
@@ -843,7 +1426,14 @@ cds_opened_since_cooldown = 0       # tracks how many CDs opened since last cool
 
 def bank_cd_menu():
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global balance, bank_balance, days_passed
+    global balance, bank_balance, days_passed, player_level
+
+    REQUIRED_LEVEL = 5
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Certified Deposits (CDs) are locked until Level {REQUIRED_LEVEL}.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''} to open CDs.")
+        return
 
     while True:
         print("\n=== 💰 Certified Deposits (CD) Menu ===")
@@ -1029,30 +1619,18 @@ def process_cds():
 
 # --- Save/Load ---
 def save_game():
-    """Save all game data to JSON file (including Vegas jackpot, stats, and CDs)."""
+    """Save game data in encrypted JSON format."""
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
-    global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
+    global heist_history, player_has_fake_id, INSIDER_INFO_COST, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
-    global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats included
-    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history   # ✅ include Certified Deposits
-
-    if "vegas_jackpot" not in globals():
-        vegas_jackpot = 25000.0  # ensure default if missing
-    if "vegas_stats" not in globals() or not isinstance(vegas_stats, dict):
-        vegas_stats = {
-            "slots_played": 0,
-            "blackjack_wins": 0,
-            "blackjack_losses": 0,
-            "roulette_bets": 0,
-            "jackpots_won": 0,
-            "games_played": 0,
-            "total_bets": 0.0,
-            "total_won": 0.0,
-            "total_lost": 0.0,
-            "net": 0.0
-        }
+    global exp_to_next_level, player_level, player_exp
+    global vegas_jackpot, vegas_stats
+    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts, trade_history
 
     data = {
         "balance": balance,
@@ -1060,13 +1638,14 @@ def save_game():
         "days_passed": days_passed,
         "portfolio": portfolio,
         "stocks": stocks,
+        "stock_supply": stock_supply,
         "insider_predictions": insider_predictions,
         "black_market_orders": black_market_orders,
         "heist_inventory": heist_inventory,
         "heist_wanted_flags": heist_wanted_flags,
         "heist_history": heist_history,
         "player_has_fake_id": player_has_fake_id,
-        "insider_info_cost": insider_info_cost if "insider_info_cost" in globals() else 10000,
+        "INSIDER_INFO_COST": INSIDER_INFO_COST,
         "price_history": price_history,
         "black_market_history": black_market_history,
         "FAKE_ID_COST": FAKE_ID_COST,
@@ -1075,10 +1654,10 @@ def save_game():
         "bank_interest_rate": bank_interest_rate,
         "bank_interest_cost": bank_interest_cost,
         "next_interest_day": next_interest_day,
-        "vegas_jackpot": vegas_jackpot,  # ✅ Jackpot saved here
-        "vegas_stats": vegas_stats,      # ✅ Stats saved too
-        "active_cds": active_cds,        # ✅ Save active CDs
-        "cd_history": cd_history,        # ✅ Save CD history
+        "vegas_jackpot": vegas_jackpot,
+        "vegas_stats": vegas_stats,
+        "active_cds": active_cds,
+        "cd_history": cd_history,
         "cd_cooldown_until": cd_cooldown_until,
         "cds_opened_since_cooldown": cds_opened_since_cooldown,
         "trade_history": trade_history,
@@ -1086,77 +1665,82 @@ def save_game():
         "crypto_portfolio": crypto_portfolio,
         "crypto_supply": crypto_supply,
         "crypto_history": crypto_history,
-        
+        "dlc_stocks_unlocked": dlc_stocks_unlocked,
+        "purchased_dlcs": purchased_dlcs,
+        "player_exp": player_exp,
+        "player_level": player_level,
+        "exp_to_next_level": exp_to_next_level,
+        "mode": mode,
+        "stock_orders": stock_orders,
+        "shorts": shorts,
+
+
     }
-    
+
     try:
-        with open(SAVE_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-        print("💾 Game saved successfully.")
+        json_str = json.dumps(data)
+        encrypted = encrypt_data(json_str)
+
+        with open(SAVE_FILE, "wb") as f:
+            f.write(encrypted)
+
+        slot_num = CURRENT_SLOT + 1 if CURRENT_SLOT is not None else "?"
+        print(f"🔐 Game saved to Slot {slot_num} successfully!")
+
+
+
     except Exception as e:
         print(f"⚠️ Error saving game: {e}")
 
 
 def load_game():
-    """Load all game data from JSON file (including Vegas jackpot, stats, and CDs)."""
+    """Load all game data from encrypted JSON save file."""
     global balance, bank_balance, days_passed, portfolio, stocks, trade_history
+    global dlc_stocks_unlocked, purchased_dlcs, black_market_inventory
     global insider_predictions, black_market_orders, heist_inventory, heist_wanted_flags
-    global heist_history, player_has_fake_id, insider_info_cost, price_history, black_market_history
+    global heist_history, player_has_fake_id, INSIDER_INFO_COST, price_history, black_market_history
     global FAKE_ID_COST, fake_id_locked_until, last_fast_forward_day
+    global stock_value, stock_supply
     global bank_interest_rate, next_interest_day, bank_interest_cost
-    global vegas_jackpot, vegas_stats  # ✅ ensure vegas_stats is properly global
-    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown, cryptos, crypto_portfolio, crypto_supply, crypto_history  # ✅ include Certified Deposits
+    global exp_to_next_level, player_level, player_exp
+    global vegas_jackpot, vegas_stats
+    global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts, trade_history
 
-    if not os.path.exists(SAVE_FILE):
-        print("📄 No save file found. Starting a new game.")
-        balance = 5000.0
-        bank_balance = 0.0
-        bank_interest_rate = 0.0
-        bank_interest_cost = 10000.0
-        next_interest_day = 7
-        portfolio, stocks, insider_predictions = {}, {}, {}
-        black_market_orders, heist_inventory, heist_wanted_flags = [], {}, []
-        heist_history, price_history, black_market_history = [], {}, []
-        player_has_fake_id = False
-        FAKE_ID_COST = 15000.0
-        fake_id_locked_until = 0
-        last_fast_forward_day = None
-        vegas_jackpot = 25000.0
-        vegas_stats = {  # ✅ initialize vegas_stats for new game
-            "slots_played": 0,
-            "blackjack_wins": 0,
-            "blackjack_losses": 0,
-            "roulette_bets": 0,
-            "jackpots_won": 0,
-            "games_played": 0,
-            "total_bets": 0.0,
-            "total_won": 0.0,
-            "total_lost": 0.0,
-            "net": 0.0
-        }
-        active_cds, cd_history = [], []  # ✅ initialize new CD lists
+
+    if SAVE_FILE is None or not os.path.exists(SAVE_FILE):
+        print("📄 No save found in this slot. Starting new game.")
         return
 
+
+    # ----------- DECRYPT SAVE FILE -----------
     try:
-        with open(SAVE_FILE, "r") as f:
-            data = json.load(f)
+        with open(SAVE_FILE, "rb") as f:
+            encrypted = f.read()
+
+        decrypted_json = decrypt_data(encrypted)
+        data = json.loads(decrypted_json)
+
     except Exception as e:
-        print(f"⚠️ Error loading save file: {e}")
+        print("❌ Save file is corrupted or cannot be decrypted.")
+        print(f"Error: {e}")
         return
 
-    # Restore core stats
+    # ----------- RESTORE VALUES -----------
     balance = data.get("balance", 5000.0)
     bank_balance = data.get("bank_balance", 0.0)
     days_passed = data.get("days_passed", 0)
     portfolio = data.get("portfolio", {})
     stocks = data.get("stocks", {})
+    stock_supply = data.get("stock_supply", {})
     insider_predictions = data.get("insider_predictions", {})
     black_market_orders = data.get("black_market_orders", [])
+    black_market_inventory = data.get("black_market_inventory", {})
     heist_inventory = data.get("heist_inventory", {})
     heist_wanted_flags = data.get("heist_wanted_flags", [])
     heist_history = data.get("heist_history", [])
     player_has_fake_id = data.get("player_has_fake_id", False)
-    insider_info_cost = data.get("insider_info_cost", 10000)
+    INSIDER_INFO_COST = data.get("INSIDER_INFO_COST", 10000)
     price_history = data.get("price_history", {})
     black_market_history = data.get("black_market_history", [])
     FAKE_ID_COST = data.get("FAKE_ID_COST", 15000.0)
@@ -1166,47 +1750,35 @@ def load_game():
     bank_interest_cost = data.get("bank_interest_cost", 10000.0)
     next_interest_day = data.get("next_interest_day", 7)
     vegas_jackpot = data.get("vegas_jackpot", 25000.0)
-    cd_cooldown_until = data.get("cd_cooldown_until", 0)
-    cds_opened_since_cooldown = data.get("cds_opened_since_cooldown", 0)
+    vegas_stats = data.get("vegas_stats", {})
     trade_history = data.get("trade_history", [])
+    stock_orders = data.get("stock_orders", [])
+    shorts = data.get("shorts", {})
+
+    
+    
+
+    # Crypto systems
     cryptos = data.get("cryptos", {})
     crypto_portfolio = data.get("crypto_portfolio", {})
     crypto_supply = data.get("crypto_supply", {})
     crypto_history = data.get("crypto_history", {})
 
+    # Player XP / Level
+    player_exp = data.get("player_exp", 0)
+    player_level = data.get("player_level", 1)
+    exp_to_next_level = data.get("exp_to_next_level", 150)
+    mode = data.get("mode", [])
 
+    # DLCs
+    purchased_dlcs[:] = data.get("purchased_dlcs", [])
+    dlc_stocks_unlocked[:] = data.get("dlc_stocks_unlocked", [])
 
-    # ✅ Load Certified Deposit data
+    # CDs
     active_cds = data.get("active_cds", [])
     cd_history = data.get("cd_history", [])
-
-    # ✅ Cleanup corrupted or legacy CD entries
-    active_cds = [cd for cd in active_cds if isinstance(cd, dict) and "amount" in cd]
-    cd_history = [h for h in cd_history if isinstance(h, dict) and "amount" in h]
-
-    # ✅ Restore Vegas stats properly with fallback
-    vegas_stats = data.get("vegas_stats", {
-        "slots_played": 0,
-        "blackjack_wins": 0,
-        "blackjack_losses": 0,
-        "roulette_bets": 0,
-        "jackpots_won": 0,
-        "games_played": 0,
-        "total_bets": 0.0,
-        "total_won": 0.0,
-        "total_lost": 0.0,
-        "net": 0.0
-    })
-
-    # Ensure all numeric values exist even if older saves are missing them
-    for k, v in {
-        "games_played": 0,
-        "total_bets": 0.0,
-        "total_won": 0.0,
-        "total_lost": 0.0,
-        "net": 0.0
-    }.items():
-        vegas_stats[k] = vegas_stats.get(k, v)
+    cd_cooldown_until = data.get("cd_cooldown_until", 0)
+    cds_opened_since_cooldown = data.get("cds_opened_since_cooldown", 0)
 
     print("✅ Game loaded successfully.")
 
@@ -1220,7 +1792,7 @@ def fast_forward(days=None):
     """
     global days_passed, bank_balance, stocks, price_history, insider_predictions
     global black_market_orders, black_market_history, balance, heist_wanted_flags
-    global last_fast_forward_day, bank_interest_rate, vegas_jackpot, process_cds, update_cryptos
+    global last_fast_forward_day, bank_interest_rate, vegas_jackpot, process_cds, update_cryptos, process_stock_orders
 
     # --- Check cooldown ---
     if last_fast_forward_day is not None:
@@ -1296,8 +1868,10 @@ def fast_forward(days=None):
             process_black_market_orders()
         if 'process_heist_wanted' in globals():
             process_heist_wanted()
-        if 'auto_save_if_needed' in globals():
-            auto_save_if_needed()
+        if 'process_heist_wanted' in globals():
+            process_heist_wanted()
+        if 'process_stock_orders' in globals():
+            process_stock_orders()
         # Daily jackpot growth
         if "vegas_jackpot" in globals():
             vegas_jackpot += 500.0
@@ -1340,7 +1914,7 @@ def apply_bank_interest():
 
 def auto_play():
     """Background auto-update loop (run in a thread)."""
-    global play_mode, days_passed, bank_balance, bank_interest_rate, current_page, vegas_jackpot, update_cryptos, process_cds
+    global play_mode, days_passed, bank_balance, bank_interest_rate, current_page, vegas_jackpot, update_cryptos, process_cds, process_stock_orders
 
     tick_count = 0  # counts 15-second updates
 
@@ -1381,6 +1955,7 @@ def auto_play():
             process_heist_wanted()
             process_cds()
             update_cryptos()
+            process_stock_orders()
 
         # --- Clear terminal and display market ---
         os.system("cls" if os.name == "nt" else "clear")
@@ -1389,6 +1964,7 @@ def auto_play():
         print_portfolio()
 
         # --- Wait 15 seconds before next update ---
+        process_stock_orders()
         time.sleep(15)
 
 def process_heist_wanted():
@@ -1426,7 +2002,7 @@ def process_heist_wanted():
 # --- Game Mode  ---
 def choose_game_mode():
     """Prompt player for mode. Ensure stocks exist before using them."""
-    global balance, bank_interest_rate, bank_interest_cost, portfolio, stocks, mode
+    global balance, bank_interest_rate, bank_interest_cost, portfolio, stocks, mode, exp_to_next_level
 
     # Ensure market exists if somehow empty
     if not stocks:
@@ -1444,11 +2020,9 @@ def choose_game_mode():
     print("                  - Cheaper stock prices, cheaper interest upgrades.")
     print("2) ⚪ Normal Mode - The standard stock market experience.")
     print("3) 🔴 Hard Mode   - Start with only $1500 and tougher conditions.")
-    print("\n=== 🎰 7 Casino Games in Vegas 🎰 ===")
-    print("\n=== 🎮 Two Hidden Menus... One Gameplay Enhancement... And Two Hidden Gamemodes 🎮 ===")
-    print("HINT: One option is for knowledge, the two gamemodes are HIGHLY ILLEGAL and can be found at the same place.")
+    print("\n=== 🎰 7 Casino Games in Vegas & More 🎰 ===")
     print()
-    print("\nVer: 1.0.5")
+    print("\nVer: 1.1.5")
 
     while True:
         choice = input("\nSelect mode (1=Easy, 2=Normal, 3=Hard): ").strip()
@@ -1496,6 +2070,7 @@ def choose_game_mode():
         mode = "Hard"
         balance = 1500.0
         bank_interest_cost *= 2
+        exp_to_next_level = 200
         print("\n🔴 Hard Mode Selected! Money is tight, interest upgrades cost more.")
         print("Bank upgrades cost double, and returns are reduced. Play carefully!")
 
@@ -1508,9 +2083,10 @@ def new_game():
     """Wipes save data and restarts from game mode selection."""
     global balance, bank_balance, bank_interest_rate, bank_interest_cost
     global portfolio, stocks, day, next_interest_day, mode, price_history, stock_supply
-    global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed
+    global shorts, trade_history, purchased_dlcs, dlc_stocks_unlocked, days_passed, player_exp, player_level, exp_to_next_level
     global last_auto_save_day, vegas_stats, INSIDER_INFO_COST
-    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history
+    global last_fast_forward_day, FAST_FORWARD_COOLDOWN_DAYS, heist_wanted_flags, heist_inventory, heist_history, exp_to_next_level, show_trade_history
+    global stock_orders, stock_trade_history   # ← add here
 
 
     confirm = input("⚠️ Are you sure you want to start a NEW GAME? This will erase all progress! (yes/no): ").strip().lower()
@@ -1572,6 +2148,17 @@ def new_game():
     crypto_portfolio.clear()
     crypto_supply.clear()
     crypto_history.clear()
+    show_trade_history = []
+# Reset XP & Level ONLY if starting truly fresh
+    if not os.path.exists(SAVE_FILE):
+        player_exp = 0
+        player_level = 0
+        exp_to_next_level = 150
+   
+    if os.path.exists(SAVE_FILE):
+        os.remove(SAVE_FILE)
+
+
 
 
 
@@ -2440,7 +3027,11 @@ def vegas_stack_em():
             if pos + moving_width >= track_len or pos <= 0:
                 direction *= -1
 
-            if sys.stdin in ( [0] if msvcrt is None else (msvcrt.kbhit(),) )[0]:
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                if key in (b'\r', b'\n'):
+                    break
+
                 input()  # catch Enter press
                 break
 
@@ -2486,7 +3077,15 @@ def vegas_stack_em():
 #--black market----------------------
 def black_market_menu():
     """Main black market hub."""
-    global black_market_inventory, black_market_orders
+    global black_market_inventory, black_market_orders, player_level, current_page, days_passed
+    
+    REQUIRED_LEVEL = 10
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Black Market locked — reach Level {REQUIRED_LEVEL} to access it.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''}.")
+        return
+    
     while True:
         print("\n=== ⚠️ BLACK MARKET ⚠️ ===")
         print(f"Cash: {format_money(balance)} | Day: {days_passed}")
@@ -2912,9 +3511,9 @@ def _play_hack_minigame():
     def get_key():
         """Capture a single key press (raw, no Enter). Maps arrow keys to wasd."""
         fd = sys.stdin.fileno()
-        old_settings = None  # termios.tcgetattr removed for Windows
+        old_settings = None
         try:
-            pass  # tty.setraw replaced for Windows
+            pass  # removed for Windows
             ch = windows_getch()
             if ch == '\x1b':  # possible arrow sequence
                 ch2 = windows_getch()
@@ -2932,7 +3531,7 @@ def _play_hack_minigame():
                 return ''
             return ch
         finally:
-            pass  # termios.tcsetattr removed for Windows
+            pass
 
     def colored(text, code):
         return f"\033[{code}m{text}\033[0m"
@@ -3082,8 +3681,8 @@ def _play_drill_minigame():
 
     # setup raw mode for instant input
     fd = sys.stdin.fileno()
-    old_settings = None  # termios.tcgetattr removed for Windows
-    pass  # tty.setcbreak replaced for Windows
+    old_settings = None
+    pass  # removed for Windows
 
     def get_input(timeout=0.1):
         dr, _, _ = ( [0] if msvcrt is None else (msvcrt.kbhit(),) )
@@ -3172,7 +3771,7 @@ def _play_drill_minigame():
 
     finally:
         # restore terminal mode
-        pass  # termios.tcsetattr removed for Windows
+        pass
 
 def _play_portfolio_hack_minigame():
     """Abstract portfolio hack: guessing game. Returns True on success."""
@@ -3208,9 +3807,9 @@ def _play_steal_money_minigame():
 
     def get_key():
         fd = sys.stdin.fileno()
-        old_settings = None  # termios.tcgetattr removed for Windows
+        old_settings = None
         try:
-            pass  # tty.setraw replaced for Windows
+            pass  # removed for Windows
             ch = windows_getch()
             if ch == '\x1b':  # arrow key prefix
                 windows_getch()
@@ -3221,7 +3820,7 @@ def _play_steal_money_minigame():
                 if ch2 == 'D': return 'a'
             return ch.lower()
         finally:
-            pass  # termios.tcsetattr removed for Windows
+            pass
 
     def print_board(board, score):
         os.system("cls" if os.name == "nt" else "clear")
@@ -3330,8 +3929,8 @@ def ascii_getaway_minigame():
 
     # --- Keyboard input setup ---
     fd = sys.stdin.fileno()
-    old_settings = None  # termios.tcgetattr removed for Windows
-    pass  # tty.setcbreak replaced for Windows
+    old_settings = None
+    pass  # removed for Windows
 
     try:
         while True:
@@ -3391,7 +3990,7 @@ def ascii_getaway_minigame():
                 return True
 
     finally:
-        pass  # termios.tcsetattr removed for Windows
+        pass
 
 def breakout_lock_minigame():
     """ASCII Breakout mini-game: destroy ~45% of bricks to break the lock (A/D to move)."""
@@ -3410,8 +4009,8 @@ def breakout_lock_minigame():
     frame_delay = 0.08  # ✅ Fixed frame timing
 
     fd = sys.stdin.fileno()
-    old_settings = None  # termios.tcgetattr removed for Windows
-    pass  # tty.setcbreak replaced for Windows
+    old_settings = None
+    pass  # removed for Windows
 
     bricks_broken = 0
 
@@ -3505,7 +4104,7 @@ def breakout_lock_minigame():
             return False
 
     finally:
-        pass  # termios.tcsetattr removed for Windows
+        pass
 
 
 def prison_hack_minigame():
@@ -4087,7 +4686,15 @@ SELL_IMPACT_FACTOR = 1.5   # price falls up to 1.5% per 1% of supply sold
 
 def crypto_menu():
     """Main Crypto Menu for creating and managing your coins."""
-    global balance
+    global balance, player_level
+    
+    REQUIRED_LEVEL = 15
+    if player_level < REQUIRED_LEVEL:
+        need = REQUIRED_LEVEL - player_level
+        print(f"\n🔒 Crypto Menu is locked until Level {REQUIRED_LEVEL}.")
+        print(f"   You need {need} more level{'s' if need != 1 else ''} to get access to crypto.")
+        return
+    
     while True:
         print("\n=== 🪙 CRYPTO MENU ===")
         show_crypto_market()
@@ -4495,6 +5102,7 @@ def admin_menu():
         return
 
     print("\n✅ Access granted. Welcome, Admin.")
+    activate_cheater_mode()
 
     while True:
         print("\n=== 🧰 ADMIN MENU ===")
@@ -4680,23 +5288,23 @@ def auto_save_if_needed():
 def main():
     global current_page, play_mode
     print("Welcome to Terminal Stock Simulator! Created by Mr.SusBus And AI")
-    print("\nVer: 1.0.5")
+    print("\nVer: 1.1.5")
     if not os.path.exists(SAVE_FILE):
         # No save: ensure stocks exist then choose mode
-        choose_game_mode()
+        choose_save_slot()
     else:
         if input("Load save? (y/n): ").lower() == "y":
             load_game()
         else:
             # if user opts not to load, offer fresh mode choose
-            choose_game_mode()
+            choose_save_slot()
 
     while True:
         if not play_mode:
             print_stocks(current_page)
             print_portfolio()
-        print("\n[B] Buy | [S] Sell | [Sh] Short | [C] Cover | [Show All] [SEARCH] | [F] Fast Forward | [G] Graph | [H] History ")
-        print("[Bank] | [DLC] | [Vegas] | [Play] | [N] Next | [P] Prev | [Save] | [Q] Quit | [NEW GAME] | [CMDS] list all CMDs")
+        print("\n[B] Buy |[S]Sell|[Sh]Short|[C]Cover|[O]Orders|[Show All][SEARCH]|[F]Fast Forward|[G]Graph|[H]History")
+        print("[Bank]|[DLC]|[Vegas]|[Play]|[N]Next|[P]Prev|[Save]|[Q] Quit|[NEW/LOAD GAME]|[CMDS] All CMDs")
         ch = input("Choose: ").lower().strip()
         if ch == "b": buy_stock()
         elif ch == "s": sell_stock()
@@ -4713,6 +5321,8 @@ def main():
         elif ch == "crypto": crypto_menu()
         elif ch == "insider": buy_insider_info()
         elif ch == "admin": admin_menu()
+        elif ch == "o": order_menu()
+        elif ch == "load game": choose_save_slot()
         elif ch == "new stocks": show_all()  # left as-is
         elif ch == "show all": show_all()
         #elif ch == "drill game": _play_drill_minigame()
@@ -4770,7 +5380,7 @@ def main():
             print("BANK) bank menu, CD) Certified Deposit menu, D) deposit money, W) withdraw money, U) upgrade bank interest")
             print("\nExtra:")
             print("INSIDER) get insider info on a stock, BLACK MARKET) black market menu, CRYPTO) cryptocurrency menu")
-            print("UPDATES) show update log, ADMIN) admin menu - password [sus] ")
+            print("UPDATES) show update log, ADMIN) admin menu - password [sus], LOAD GAME) game save menu ")
         elif ch == "updates": 
             print("======Update Change Long======")
             print("\nUpated 1.0.2")
@@ -4786,7 +5396,19 @@ def main():
             print("\nRoad Map: Off shore accounts, crypto curncey, improved heist games, more DLC, more black market items, more heist, improved black market menus, windows build, mobile game... ")
             print("\nUpated 1.0.5")
             print("\nAdded:")
-            print("Cryptocurrency menuv[crypto], command list [cmds]")
+            print("Cryptocurrency menu[crypto], command list [cmds]")
+            print("\nUpated 1.1.0")
+            print("\nAdded:")
+            print("Add new EXP & LvL system, get exp on your trades in the stock market to unlock new stocks and game play features.")
+            print("CD menus is not lock until LvL 5, Black market LvL 10, crypto menu LvL 15.")
+            print("LvL 3 you get 5 random stocks added, LvL 5 10, LvL 10 15, LvL 15 20, LvL 25 & 50 25, and 100 you get 50 new stocks.")
+            print("add back save file file encryption, and hard mode staring exp for lvl one 200 ")
+            print("\nUpated 1.1.3")
+            print("\nAdded:")
+            print("new load game CMD, support for 4 save game files, do [LOAD GAME] to get to load game menu to select game file.")
+            print("\nUpated 1.1.5")
+            print("\nAdded:")
+            print("Oder menu, buy,sell,short,cover order for stock")
         else:
             print("Invalid option.")
         
