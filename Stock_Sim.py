@@ -81,6 +81,9 @@ exp_to_next_level = 150  # Level 0 → 1 requires 150 EXP
 stock_supply = {} 
 DAILY_DRIFT = 0.0005
 DAILY_VOLATILITY = 0.02
+# --- Stock Order System ---
+stock_orders = []   # {type: "buy"/"sell", stock, qty, target_price}
+
 
 # --- DLC Setup ---
 dlc_packs = {
@@ -471,6 +474,7 @@ def print_portfolio():
         change_pct = ((short["sell_price"] - stocks.get(name, 0.0)) / short["sell_price"]) * 100 if short["sell_price"] > 0 else 0
         total_value += short_value
         print(f"{name} (SHORT): {short['shares']:.3f} shares | P/L: ${short_value:.2f} | Gain/Loss: {change_pct:.2f}%")
+    view_orders()
     print()
     print(f"💰  Cash: {format_money(balance)}")
     print(f"🏛️  Bank: {format_money(bank_balance)}")
@@ -763,6 +767,284 @@ def add_exp(amount):
             save_game()
         except Exception:
             pass
+
+
+def place_order():
+    global balance, portfolio, stock_orders
+
+    print("\n=== 📈 PLACE ORDER (BUY / SELL) ===")
+    stock = input("Enter stock symbol: ").upper()
+    if stock not in stocks:
+        print("Invalid stock.")
+        return
+
+    try:
+        qty = float(input("Enter quantity: "))
+        if qty <= 0:
+            print("Enter a positive quantity.")
+            return
+    except:
+        print("Invalid amount.")
+        return
+
+    order_type = input("Order type (buy/sell): ").lower().strip()
+    if order_type not in ["buy", "sell"]:
+        print("Invalid order type.")
+        return
+
+    try:
+        target_price = float(input("Enter target price: "))
+        if target_price <= 0:
+            print("Price must be positive.")
+            return
+    except:
+        print("Invalid price.")
+        return
+
+    # --- VALIDATION ---
+    if order_type == "buy":
+        total_cost = qty * target_price
+        if total_cost > balance:
+            print(f"❌ Not enough cash! Required: ${total_cost:,.2f}, Available: ${balance:,.2f}")
+            return
+
+    if order_type == "sell":
+        if stock not in portfolio or portfolio[stock]["qty"] < qty:
+            print("❌ You don't have enough shares to place this sell order.")
+            return
+
+    # --- CREATE ORDER ---
+    order = {
+        "type": order_type,
+        "stock": stock,
+        "qty": qty,
+        "target_price": target_price
+    }
+    stock_orders.append(order)
+
+    print(f"✅ Order placed: {order_type.upper()} {qty} {stock} @ ${target_price:.2f}")
+
+def order_menu():
+    while True:
+        print("\n=== 📋 ORDER MENU ===")
+        print("1) Place Buy/Sell Order")
+        print("2) Place Short/Cover Order")
+        print("3) View Orders")
+        print("4) Cancel Order")
+        print("Q) Back")
+        ch = input("Choose: ").lower()
+
+        if ch == "1":
+            place_order()
+        elif ch == "2":
+            place_short_cover_order()
+        elif ch == "3":
+            view_orders()
+        elif ch == "4":
+            cancel_order()
+        elif ch == "q":
+            return
+        else:
+            print("Invalid option.")
+
+def view_orders():
+    if not stock_orders:
+        print("\nNo active orders.")
+        return
+
+    print("\n=== ACTIVE ORDERS ===")
+    for i, o in enumerate(stock_orders, 1):
+        print(f"{i}) {o['type'].upper()} {o['qty']} {o['stock']} @ ${o['target_price']:.2f}")
+
+def cancel_order():
+    if not stock_orders:
+        print("No orders to cancel.")
+        return
+    
+    view_orders()
+    try:
+        i = int(input("Select order to cancel: ")) - 1
+    except:
+        print("Invalid input.")
+        return
+
+    if 0 <= i < len(stock_orders):
+        removed = stock_orders.pop(i)
+        print(f"Cancelled: {removed['type']} {removed['qty']}x {removed['stock']} @ ${removed['target_price']}")
+    else:
+        print("Invalid selection.")
+
+
+def process_stock_orders():
+    global stock_orders, balance, portfolio, shorts, stock_trade_history
+
+    if not stock_orders:
+        return
+
+    executed = []
+
+    # ---------------------------------------
+    # MAIN LOOP: iterates over each order
+    # ---------------------------------------
+    for order in stock_orders:
+
+        stock = order["stock"]
+        price = stocks.get(stock, None)
+        if price is None:
+            continue
+
+        # BUY --------------------------------
+        if order["type"] == "buy" and price <= order["target_price"]:
+            cost = order["qty"] * order["target_price"]
+            if cost <= balance:
+                balance -= cost
+
+                if stock in portfolio:
+                    old_qty = portfolio[stock]["qty"]
+                    old_price = portfolio[stock]["avg_price"]
+                    new_qty = old_qty + order["qty"]
+                    new_avg = ((old_qty * old_price) + cost) / new_qty
+                    portfolio[stock]["qty"] = new_qty
+                    portfolio[stock]["avg_price"] = new_avg
+                else:
+                    portfolio[stock] = {
+                        "qty": order["qty"],
+                        "avg_price": order["target_price"]
+                    }
+
+                stock_trade_history.append(
+                    f"LIMIT BUY EXECUTED: Bought {order['qty']} {stock} @ ${order['target_price']:.2f}"
+                )
+                executed.append(order)
+                continue
+
+        # SELL -------------------------------
+        elif order["type"] == "sell" and price >= order["target_price"]:
+            if stock in portfolio and portfolio[stock]["qty"] >= order["qty"]:
+                revenue = order["qty"] * order["target_price"]
+                balance += revenue
+
+                portfolio[stock]["qty"] -= order["qty"]
+                if portfolio[stock]["qty"] <= 0:
+                    del portfolio[stock]
+
+                stock_trade_history.append(
+                    f"LIMIT SELL EXECUTED: Sold {order['qty']} {stock} @ ${order['target_price']:.2f}"
+                )
+                executed.append(order)
+                continue
+
+        # SHORT -------------------------------
+        elif order["type"] == "short" and price >= order["target_price"]:
+            entry_price = order["target_price"]
+
+            if stock not in shorts:
+                shorts[stock] = {"shares": 0, "sell_price": entry_price}
+
+            shorts[stock]["shares"] += order["qty"]
+            shorts[stock]["sell_price"] = entry_price
+
+            stock_trade_history.append(
+                f"LIMIT SHORT EXECUTED: Shorted {order['qty']} {stock} @ ${entry_price:.2f}"
+            )
+            executed.append(order)
+            continue
+
+        # COVER -------------------------------
+        elif order["type"] == "cover" and price <= order["target_price"]:
+            if stock in shorts and shorts[stock]["shares"] >= order["qty"]:
+
+                cover_price = order["target_price"]
+                entry_price = shorts[stock]["sell_price"]
+                qty = order["qty"]
+
+                profit = (entry_price - cover_price) * qty
+                balance += (entry_price * qty) + profit
+
+                shorts[stock]["shares"] -= qty
+                if shorts[stock]["shares"] <= 0:
+                    del shorts[stock]
+
+                stock_trade_history.append(
+                    f"LIMIT COVER EXECUTED: Covered {qty} {stock} @ ${cover_price:.2f} (P/L: ${profit:.2f})"
+                )
+                executed.append(order)
+                continue
+
+    # Remove executed orders
+    for done in executed:
+        if done in stock_orders:
+            stock_orders.remove(done)
+
+
+
+def place_short_cover_order():
+    global portfolio, shorts, balance, stock_orders
+
+    print("\n=== 📉 PLACE SHORT / COVER ORDER ===")
+    stock = input("Enter stock symbol: ").upper()
+    if stock not in stocks:
+        print("Invalid stock.")
+        return
+
+    try:
+        qty = float(input("Enter quantity: "))
+        if qty <= 0:
+            print("Enter a positive quantity.")
+            return
+    except:
+        print("Invalid amount.")
+        return
+
+    print("\nOrder types:")
+    print("1) Short (open a short position)")
+    print("2) Cover (close a short position)")
+    choice = input("Choose: ").strip()
+
+    if choice == "1":  
+        order_type = "short"
+
+        # SHORT VALIDATION — player needs enough supply to borrow
+        supply = stock_supply.get(stock, 0)
+        currently_short = shorts.get(stock, {}).get("shares", 0)
+        max_short_possible = max(0, supply - currently_short)
+
+        if qty > max_short_possible:
+            print(f"❌ Not enough stock available to borrow for shorting.")
+            print(f"Available to short: {max_short_possible:.3f}")
+            return
+
+    elif choice == "2":
+        order_type = "cover"
+
+        if stock not in shorts or shorts[stock]["shares"] < qty:
+            print("❌ Not enough shorted shares to place this cover order.")
+            return
+    else:
+        print("Invalid choice.")
+        return
+
+    # Target price
+    try:
+        target_price = float(input("Enter target price: "))
+        if target_price <= 0:
+            print("Price must be positive.")
+            return
+    except:
+        print("Invalid price.")
+        return
+
+    # CREATE ORDER
+    order = {
+        "type": order_type,
+        "stock": stock,
+        "qty": qty,
+        "target_price": target_price
+    }
+    stock_orders.append(order)
+
+    print(f"✅ Order placed: {order_type.upper()} {qty} {stock} @ ${target_price:.2f}")
+
 
 
 def buy_stock():
@@ -1309,7 +1591,7 @@ def save_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts
 
     data = {
         "balance": balance,
@@ -1349,7 +1631,10 @@ def save_game():
         "player_exp": player_exp,
         "player_level": player_level,
         "exp_to_next_level": exp_to_next_level,
-        "mode": mode
+        "mode": mode,
+        "stock_orders": stock_orders,
+        "shorts": shorts
+
     }
 
     try:
@@ -1380,7 +1665,7 @@ def load_game():
     global exp_to_next_level, player_level, player_exp
     global vegas_jackpot, vegas_stats
     global active_cds, cd_history, cd_cooldown_until, cds_opened_since_cooldown
-    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode
+    global cryptos, crypto_portfolio, crypto_supply, crypto_history, mode, stock_orders, shorts
 
     if SAVE_FILE is None or not os.path.exists(SAVE_FILE):
         print("📄 No save found in this slot. Starting new game.")
@@ -1426,6 +1711,8 @@ def load_game():
     vegas_jackpot = data.get("vegas_jackpot", 25000.0)
     vegas_stats = data.get("vegas_stats", {})
     trade_history = data.get("trade_history", [])
+    stock_orders = data.get("stock_orders", [])
+    shorts = data.get("shorts", {})
 
     # Crypto systems
     cryptos = data.get("cryptos", {})
@@ -1461,7 +1748,7 @@ def fast_forward(days=None):
     """
     global days_passed, bank_balance, stocks, price_history, insider_predictions
     global black_market_orders, black_market_history, balance, heist_wanted_flags
-    global last_fast_forward_day, bank_interest_rate, vegas_jackpot, process_cds, update_cryptos
+    global last_fast_forward_day, bank_interest_rate, vegas_jackpot, process_cds, update_cryptos, process_stock_orders
 
     # --- Check cooldown ---
     if last_fast_forward_day is not None:
@@ -1537,8 +1824,10 @@ def fast_forward(days=None):
             process_black_market_orders()
         if 'process_heist_wanted' in globals():
             process_heist_wanted()
-        if 'auto_save_if_needed' in globals():
-            auto_save_if_needed()
+        if 'process_heist_wanted' in globals():
+            process_heist_wanted()
+        if 'process_stock_orders' in globals():
+            process_stock_orders()
         # Daily jackpot growth
         if "vegas_jackpot" in globals():
             vegas_jackpot += 500.0
@@ -1581,7 +1870,7 @@ def apply_bank_interest():
 
 def auto_play():
     """Background auto-update loop (run in a thread)."""
-    global play_mode, days_passed, bank_balance, bank_interest_rate, current_page, vegas_jackpot, update_cryptos, process_cds
+    global play_mode, days_passed, bank_balance, bank_interest_rate, current_page, vegas_jackpot, update_cryptos, process_cds, process_stock_orders
 
     tick_count = 0  # counts 15-second updates
 
@@ -1622,6 +1911,7 @@ def auto_play():
             process_heist_wanted()
             process_cds()
             update_cryptos()
+            process_stock_orders()
 
         # --- Clear terminal and display market ---
         os.system("cls" if os.name == "nt" else "clear")
@@ -1630,6 +1920,7 @@ def auto_play():
         print_portfolio()
 
         # --- Wait 15 seconds before next update ---
+        process_stock_orders()
         time.sleep(15)
 
 def process_heist_wanted():
@@ -1687,7 +1978,7 @@ def choose_game_mode():
     print("3) 🔴 Hard Mode   - Start with only $1500 and tougher conditions.")
     print("\n=== 🎰 7 Casino Games in Vegas & More 🎰 ===")
     print()
-    print("\nVer: 1.1.3")
+    print("\nVer: 1.1.5")
 
     while True:
         choice = input("\nSelect mode (1=Easy, 2=Normal, 3=Hard): ").strip()
@@ -4947,7 +5238,7 @@ def auto_save_if_needed():
 def main():
     global current_page, play_mode
     print("Welcome to Terminal Stock Simulator! Created by Mr.SusBus And AI")
-    print("\nVer: 1.1.3")
+    print("\nVer: 1.1.5")
     if not os.path.exists(SAVE_FILE):
         # No save: ensure stocks exist then choose mode
         choose_save_slot()
@@ -4962,8 +5253,8 @@ def main():
         if not play_mode:
             print_stocks(current_page)
             print_portfolio()
-        print("\n[B] Buy | [S] Sell | [Sh] Short | [C] Cover | [Show All] [SEARCH] | [F] Fast Forward | [G] Graph | [H] History ")
-        print("[Bank] | [DLC] | [Vegas] | [Play] | [N] Next | [P] Prev | [Save] | [Q] Quit | [NEW/LOAD GAME] | [CMDS] All CMDs")
+        print("\n[B] Buy |[S]Sell|[Sh]Short|[C]Cover|[O]Orders|[Show All][SEARCH]|[F]Fast Forward|[G]Graph|[H]History")
+        print("[Bank]|[DLC]|[Vegas]|[Play]|[N]Next|[P]Prev|[Save]|[Q] Quit|[NEW/LOAD GAME]|[CMDS] All CMDs")
         ch = input("Choose: ").lower().strip()
         if ch == "b": buy_stock()
         elif ch == "s": sell_stock()
@@ -4980,6 +5271,7 @@ def main():
         elif ch == "crypto": crypto_menu()
         elif ch == "insider": buy_insider_info()
         elif ch == "admin": admin_menu()
+        elif ch == "o": order_menu()
         elif ch == "load game": choose_save_slot()
         elif ch == "new stocks": show_all()  # left as-is
         elif ch == "show all": show_all()
@@ -5064,6 +5356,9 @@ def main():
             print("\nUpated 1.1.3")
             print("\nAdded:")
             print("new load game CMD, support for 4 save game files, do [LOAD GAME] to get to load game menu to select game file.")
+            print("\nUpated 1.1.5")
+            print("\nAdded:")
+            print("Oder menu, buy,sell,short,cover order for stock")
         else:
             print("Invalid option.")
         
