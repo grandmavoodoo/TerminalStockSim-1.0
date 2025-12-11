@@ -1,3 +1,4 @@
+
 # convert_to_windows.py
 # Usage: python convert_to_windows.py
 # Reads /mnt/data/Stock_Sim.py and writes ./Stock_Sim_windows.py (in current directory).
@@ -117,6 +118,23 @@ text = re.sub(r"^\s*import\s+select\s*$", "", text, flags=re.MULTILINE)
 if "WINDOWS_CONVERSION_NOTE" not in text:
     text = "# WINDOWS_CONVERSION_NOTE: This file was auto-generated from a Unix-friendly version.\n" + text
 
+# 7) STACK’EM FIX — Replace the broken input line safely
+STACKEM_LINE = r"if sys\.stdin in \( \[0\] if msvcrt is None else \(msvcrt\.kbhit\(\),\) \)\[0\]:"
+
+# Replace broken line with a unique marker
+text = re.sub(STACKEM_LINE, "###STACKEM_INPUT_PATCH###", text)
+
+# Now insert correct Windows-safe code
+STACKEM_BLOCK = (
+    "if msvcrt.kbhit():"
+    "    key = msvcrt.getch()"
+    "    if key in (b'\r', b'\n'):"
+    "        break"
+)
+
+text = text.replace("###STACKEM_INPUT_PATCH###", STACKEM_BLOCK)
+
+
 # 9) Write out the converted file
 with io.open(DST, "w", encoding="utf-8") as out_f:
     out_f.write(text)
@@ -124,4 +142,3 @@ with io.open(DST, "w", encoding="utf-8") as out_f:
 print(f"Converted file written to: {DST}")
 print("Please inspect the file for any remaining platform-specific calls and test it on Windows.")
 print("If you run into a specific error, paste the traceback and I will patch the converter further.")
-
