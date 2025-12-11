@@ -40,8 +40,8 @@ Windows file convert: beta STILL NEED TESTING
 2. run "python3 convert.py"
 3. it will make a new windows verison that will work on windows.
 4. you may need to remove these lines at 3030: Change it to this
-            if msvcrt.kbhit():
-                key = msvcrt.getch()
-                if key in (b'\r', b'\n'):
-                    break
+-"            if msvcrt.kbhit():"
+-"                key = msvcrt.getch()"
+ -"               if key in (b'\r', b'\n'):"
+  -"                  break"
 
