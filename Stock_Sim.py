@@ -579,12 +579,21 @@ def activate_cheater_mode():
 
 
 
-def log_trade(action, stock, qty, price, result=None):
+def log_trade(action, stock, qty, price, trade_value=None, pl=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     entry = f"[{timestamp}] {action.upper()} {qty:.3f}x {stock} @ ${price:.2f}"
-    if result:
-        entry += f" | Result: {result}"
+
+    if trade_value is not None:
+        entry += f" | Value: ${trade_value:,.2f}"
+
+    if pl is not None:
+        sign = "+" if pl >= 0 else "-"
+        entry += f" | P/L: {sign}${abs(pl):,.2f}"
+
     trade_history.append(entry)
+
+
 
 def update_stocks():
     global days_passed, bank_balance
@@ -878,13 +887,106 @@ def cancel_order():
 
 
 def process_stock_orders():
-    global stock_orders, balance, portfolio, shorts, trade_history
-    global trade_history
-
-    if not stock_orders:
-        return
+    global stock_orders, balance, portfolio, shorts
 
     executed = []
+
+    for order in stock_orders:
+        stock = order["stock"]
+        qty = order["qty"]
+        target = order["target_price"]
+        price = stocks.get(stock)
+
+        if price is None:
+            continue
+
+        # =========================
+        # BUY LIMIT ORDER
+        # =========================
+        if order["type"] == "buy" and price <= target:
+            order_value = qty * target
+
+            if balance < order_value:
+                continue
+
+            balance -= order_value
+
+            if stock in portfolio:
+                p = portfolio[stock]
+                new_qty = p["qty"] + qty
+                p["avg_price"] = ((p["avg_price"] * p["qty"]) + order_value) / new_qty
+                p["qty"] = new_qty
+            else:
+                portfolio[stock] = {"qty": qty, "avg_price": target}
+
+            log_trade("BUY", stock, qty, target, order_value=order_value)
+            print(f"🟢 ORDER FILLED: Bought {qty} {stock} @ ${target:.2f}")
+            executed.append(order)
+
+        # =========================
+        # SELL LIMIT ORDER
+        # =========================
+        elif order["type"] == "sell" and price >= target:
+            if stock not in portfolio or portfolio[stock]["qty"] < qty:
+                continue
+
+            avg_price = portfolio[stock]["avg_price"]
+            order_value = qty * target
+            pl = (target - avg_price) * qty
+
+            balance += order_value
+            portfolio[stock]["qty"] -= qty
+
+            if portfolio[stock]["qty"] <= 0:
+                del portfolio[stock]
+
+            log_trade("SELL", stock, qty, target, order_value=order_value, pl=pl)
+            print(f"🔴 ORDER FILLED: Sold {qty} {stock} @ ${target:.2f} | P/L: ${pl:.2f}")
+            executed.append(order)
+
+        # =========================
+        # SHORT ORDER
+        # =========================
+        elif order["type"] == "short" and price >= target:
+            order_value = qty * target
+            balance -= order_value
+
+            if stock not in shorts:
+                shorts[stock] = {"shares": 0, "sell_price": target}
+
+            shorts[stock]["shares"] += qty
+            shorts[stock]["sell_price"] = target
+
+            log_trade("SHORT", stock, qty, target, order_value=order_value)
+            print(f"🔻 SHORT FILLED: {qty} {stock} @ ${target:.2f}")
+            executed.append(order)
+
+        # =========================
+        # COVER ORDER
+        # =========================
+        elif order["type"] == "cover" and price <= target:
+            if stock not in shorts or shorts[stock]["shares"] < qty:
+                continue
+
+            entry_price = shorts[stock]["sell_price"]
+            order_value = qty * target
+            pl = (entry_price - target) * qty
+
+            balance += order_value + pl
+            shorts[stock]["shares"] -= qty
+
+            if shorts[stock]["shares"] <= 0:
+                del shorts[stock]
+
+            log_trade("COVER", stock, qty, target, order_value=order_value, pl=pl)
+            print(f"🟩 COVER FILLED: {qty} {stock} @ ${target:.2f} | P/L: ${pl:.2f}")
+            executed.append(order)
+
+    # Remove executed orders
+    for o in executed:
+        if o in stock_orders:
+            stock_orders.remove(o)
+
 
     # ---------------------------------------
     # MAIN LOOP: iterates over each order
@@ -1073,31 +1175,39 @@ def buy_stock():
         print(f"Not enough supply available. Supply: {supply}, You own: {owned_qty:.3f}. Available to buy: {available_to_buy:.3f}")
         return
 
-    cost = qty * stocks[stock]
-    if cost > balance:
+    price = stocks[stock]
+    trade_value = qty * price
+
+    if trade_value > balance:
         print("Not enough funds!")
         return
-    balance -= cost
+
+    balance -= trade_value
+
     if stock in portfolio:
         total_qty = portfolio[stock]["qty"] + qty
-        avg_price = ((portfolio[stock]["avg_price"] * portfolio[stock]["qty"]) + cost) / total_qty
+        avg_price = ((portfolio[stock]["avg_price"] * portfolio[stock]["qty"]) + trade_value) / total_qty
         portfolio[stock]["qty"] = total_qty
         portfolio[stock]["avg_price"] = avg_price
     else:
-        portfolio[stock] = {"qty": qty, "avg_price": stocks[stock]}
+        portfolio[stock] = {"qty": qty, "avg_price": price}
+
+    log_trade("BUY", stock, qty, price, trade_value=trade_value)
     print(f"Bought {qty:.3f} of {stock}")
-    log_trade("BUY", stock, qty, stocks[stock])
+
 
 def sell_stock():
     global balance, portfolio, stocks, current_page
     if not portfolio:
         print("You don’t own any stocks.")
         return
+
     print("\n1) Sell Specific Stock\n2) Sell All Stocks")
     choice = input("Choose option: ")
     if choice == "2":
         sell_all()
         return
+
     stock = input("Enter stock name to sell: ").upper()
     if stock not in portfolio:
         print("You don’t own that stock.")
@@ -1116,50 +1226,29 @@ def sell_stock():
             print("Not enough shares.")
             return
 
-    # Safely read avg price and current price
     avg_price = float(portfolio[stock].get("avg_price", 0.0))
     current_price = float(stocks.get(stock, 0.0))
 
-    # Compute profit/loss BEFORE awarding EXP
-    gain_loss = qty * (current_price - avg_price)  # profit (can be negative)
-    profit = gain_loss  # explicit name for clarity
+    trade_value = qty * current_price
+    pl = qty * (current_price - avg_price)
 
-    # Transfer cash to player
-    balance += qty * current_price
-
-    # Update portfolio
+    balance += trade_value
     portfolio[stock]["qty"] -= qty
     if portfolio[stock]["qty"] <= 0:
         del portfolio[stock]
 
-    # Award EXP if profit > 0
-    if profit > 0:
-        exp_gain = profit * 0.15
-        add_exp(exp_gain)
+    if pl > 0:
+        add_exp(pl * 0.15)
 
-    print(f"Sold {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
-    if 'log_trade' in globals():
-        try:
-            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
-        except Exception:
-            # fallback: basic trade log append if structure exists
-            try:
-                trade_history.append({"type": "SELL", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${gain_loss:.2f}"})
-            except Exception:
-                pass
+    log_trade("SELL", stock, qty, current_price, trade_value=trade_value, pl=pl)
+    print(f"Sold {qty:.3f} of {stock} | P/L: ${pl:.2f}")
 
-    # Refresh UI
     try:
         print_stocks(current_page)
     except Exception:
         pass
     print_portfolio()
-    # auto-save
-    if 'save_game' in globals():
-        try:
-            save_game()
-        except Exception:
-            pass
+
 
 
 def sell_all():
@@ -1167,44 +1256,38 @@ def sell_all():
     if not portfolio:
         print("You don’t own any stocks.")
         return
+
     total_proceeds = 0
     total_profit = 0
+
     for stock, data in list(portfolio.items()):
         qty = data["qty"]
         avg_price = float(data.get("avg_price", 0.0))
         current_price = float(stocks.get(stock, 0.0))
-        gain_loss = qty * (current_price - avg_price)  # profit or loss
-        proceeds = qty * current_price
-        # Add cash
-        balance += proceeds
-        total_proceeds += proceeds
-        total_profit += gain_loss
-        # Award EXP for profits only
-        if gain_loss > 0:
-            exp_gain = gain_loss * 0.15
-            add_exp(exp_gain)
-        # Log trade
-        try:
-            log_trade("SELL", stock, qty, current_price, result=f"P/L ${gain_loss:.2f}")
-        except Exception:
-            pass
-        print(f"Sold all {qty:.3f} of {stock} | P/L: ${gain_loss:.2f}")
+
+        trade_value = qty * current_price
+        pl = qty * (current_price - avg_price)
+
+        balance += trade_value
+        total_proceeds += trade_value
+        total_profit += pl
+
+        if pl > 0:
+            add_exp(pl * 0.15)
+
+        log_trade("SELL", stock, qty, current_price, trade_value=trade_value, pl=pl)
+        print(f"Sold all {qty:.3f} of {stock} | P/L: ${pl:.2f}")
+
         del portfolio[stock]
 
     print(f"\n💰 Sold all holdings | Total proceeds: ${total_proceeds:.2f}")
-    print(f"✨ Total Profit: ${total_profit:.2f} | EXP gained automatically if profitable trades")
-    # UI refresh
+    print(f"✨ Total Profit: ${total_profit:.2f}")
+
     try:
         print_stocks(current_page)
     except Exception:
         pass
     print_portfolio()
-    # Auto-save
-    if 'save_game' in globals():
-        try:
-            save_game()
-        except Exception:
-            pass
 
 
 def short_stock():
@@ -1218,62 +1301,59 @@ def short_stock():
     except ValueError:
         print("Invalid quantity.")
         return
-    cost_to_short = qty * stocks[stock]
-    if cost_to_short > balance:
+
+    price = stocks[stock]
+    trade_value = qty * price
+
+    if trade_value > balance:
         print("Not enough cash to short that much!")
         return
-    balance -= cost_to_short
+
+    balance -= trade_value
+
     if stock in shorts:
         shorts[stock]["shares"] += qty
     else:
-        shorts[stock] = {"shares": qty, "sell_price": stocks[stock]}
-    print(f"Shorted {qty:.3f} {stock} using ${cost_to_short:.2f} margin.")
-    log_trade("SHORT", stock, qty, stocks[stock])
-    print_stocks(current_page)
-    print_portfolio()
+        shorts[stock] = {"shares": qty, "sell_price": price}
+
+    log_trade("SHORT", stock, qty, price, trade_value=trade_value)
+    print(f"Shorted {qty:.3f} {stock} using ${trade_value:.2f} margin.")
+
 
 def cover_all():
     global balance, shorts, stocks, current_page
     if not shorts:
         print("No short positions to cover.")
         return
+
     total_pl = 0
-    total_exp = 0
+
     for stock, data in list(shorts.items()):
         qty = data["shares"]
         sell_price = float(data.get("sell_price", 0.0))
         current_price = float(stocks.get(stock, 0.0))
-        profit = (sell_price - current_price) * qty
-        total_pl += profit
-        # Award EXP for profits only
-        if profit > 0:
-            exp_gain = profit * 0.15
-            total_exp += exp_gain
-            add_exp(exp_gain)
-        # Settle the short
-        balance += profit + (sell_price * qty)
-        # Log trade
-        try:
-            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
-        except Exception:
-            pass
-        print(f"Covered all {qty:.3f} of {stock}, P/L: ${profit:.2f}")
+
+        trade_value = qty * current_price
+        pl = (sell_price - current_price) * qty
+
+        balance += trade_value + pl
+        total_pl += pl
+
+        if pl > 0:
+            add_exp(pl * 0.15)
+
+        log_trade("COVER", stock, qty, current_price, trade_value=trade_value, pl=pl)
+        print(f"Covered all {qty:.3f} of {stock} | P/L: ${pl:.2f}")
+
         del shorts[stock]
+
     print(f"\n📉 Covered all shorts | Total P/L: ${total_pl:.2f}")
-    if total_exp > 0:
-        print(f"✨ Total EXP gained: {total_exp:.0f}")
-    # UI refresh
+
     try:
         print_stocks(current_page)
     except Exception:
         pass
     print_portfolio()
-    # Auto-save
-    if 'save_game' in globals():
-        try:
-            save_game()
-        except Exception:
-            pass
 
 
 def cover_short():
@@ -1281,62 +1361,39 @@ def cover_short():
     if not shorts:
         print("You have no short positions.")
         return
+
     print("\n1) Cover Specific Short\n2) Cover All Shorts")
     choice = input("Choose option: ")
     if choice == "2":
         cover_all()
         return
+
     stock = input("Enter stock to cover: ").upper()
     if stock not in shorts:
         print("You have no short position in that stock.")
         return
 
     sub_choice = input(f"Cover all {stock}? (y/n): ").lower()
-    if sub_choice == "y":
-        qty = shorts[stock]["shares"]
-    else:
-        try:
-            qty = float(input("Enter quantity to cover (fractional ok): "))
-        except ValueError:
-            print("Invalid quantity.")
-            return
-        if qty > shorts[stock]["shares"]:
-            print("Not that many shares shorted.")
-            return
+    qty = shorts[stock]["shares"] if sub_choice == "y" else float(input("Enter quantity to cover: "))
 
-    sell_price = float(shorts[stock].get("sell_price", 0.0))
+    sell_price = float(shorts[stock]["sell_price"])
     current_price = float(stocks.get(stock, 0.0))
-    profit = (sell_price - current_price) * qty
 
-    # Award EXP if profit > 0
-    if profit > 0:
-        exp_gain = profit * 0.15
-        add_exp(exp_gain)
+    trade_value = qty * current_price
+    pl = (sell_price - current_price) * qty
 
-    # Pay back / settle the short
-    balance += profit + (sell_price * qty)
+    balance += trade_value + pl
     shorts[stock]["shares"] -= qty
-    print(f"Covered {qty:.3f} of {stock}, P/L: ${profit:.2f}")
-    if 'log_trade' in globals():
-        try:
-            log_trade("COVER", stock, qty, current_price, result=f"P/L ${profit:.2f}")
-        except Exception:
-            try:
-                trade_history.append({"type": "COVER", "stock": stock, "qty": qty, "price": current_price, "result": f"P/L ${profit:.2f}"})
-            except Exception:
-                pass
+
+    if pl > 0:
+        add_exp(pl * 0.15)
+
+    log_trade("COVER", stock, qty, current_price, trade_value=trade_value, pl=pl)
+    print(f"Covered {qty:.3f} of {stock} | P/L: ${pl:.2f}")
+
     if shorts[stock]["shares"] <= 0:
         del shorts[stock]
-    try:
-        print_stocks(current_page)
-    except Exception:
-        pass
-    print_portfolio()
-    if 'save_game' in globals():
-        try:
-            save_game()
-        except Exception:
-            pass
+
 
 
 # --- Bank ---
